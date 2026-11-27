@@ -5,7 +5,7 @@ Voice patient for medical students to practise history-taking in English. A work
 ## Layout
 - backend/   Python/FastAPI (owner: backend dev)
 - frontend/  owner: frontend dev
-- cases/     shared Patient JSON files (cases/{patient_id}.json, cases/personas/{persona_id}.json)
+- cases/     shared Patient JSON files, one per patient (cases/{patient_id}.json, e.g. case_01); schema in schema/
 - CONTRACT.md  the single source of truth for the WS protocol and API shapes. Never change it unilaterally: if code needs a change, update CONTRACT.md in the same change and flag it.
 
 ## Shared rules
