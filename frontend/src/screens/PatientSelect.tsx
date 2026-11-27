@@ -8,10 +8,17 @@ interface Props {
 }
 
 export function PatientSelect({ onStart }: Props) {
-  const [patients, setPatients] = useState<PatientSummary[]>([])
+  // null while loading
+  const [patients, setPatients] = useState<PatientSummary[] | null>(null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    listPatients().then(setPatients)
+    listPatients()
+      .then(setPatients)
+      .catch((error) => {
+        console.error(error)
+        setFailed(true)
+      })
   }, [])
 
   return (
@@ -21,8 +28,12 @@ export function PatientSelect({ onStart }: Props) {
         <h1>Choose a patient</h1>
         <p className="muted">Practise history-taking with a virtual patient.</p>
       </header>
+      {failed && (
+        <p role="alert">Could not load patients. Check that the backend is running, then reload the page.</p>
+      )}
+      {!failed && patients === null && <p className="muted">Loading patients…</p>}
       <ul className="cards">
-        {patients.map((patient) => {
+        {patients?.map((patient) => {
           const card = patient.public_card
           return (
             <li key={patient.patient_id} className="card">
