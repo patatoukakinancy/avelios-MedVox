@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="5 4 53 53">
+  <!-- person -->
+  <circle cx="23" cy="22" r="11" fill="#0f766e"/>
+  <path d="M6 54c0-10.5 7.6-18 17-18s17 7.5 17 18z" fill="#0f766e"/>
+  <!-- sound waves -->
+  <g fill="none" stroke="#0f766e" stroke-width="5" stroke-linecap="round">
+    <path d="M40 17q6.500 8 0 16"/>
+    <path d="M48 10q13 15 0 30"/>
+  </g>
+</svg>
