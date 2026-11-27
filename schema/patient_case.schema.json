@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatientCase",
+  "description": "One virtual patient. Each file in /cases is one PatientCase.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "patient_id", "public_card", "clinical_background", "osce_behavior"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "patient_id": {
+      "description": "Neutral id that matches the file name. It reaches the browser, so it must not hint at the condition.",
+      "type": "string",
+      "pattern": "^case_[0-9]{2}$"
+    },
+    "public_card": { "$ref": "#/$defs/public_card" },
+    "clinical_background": { "$ref": "#/$defs/clinical_background" },
+    "osce_behavior": { "$ref": "#/$defs/osce_behavior" }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "fact_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+
+    "public_card": {
+      "description": "The only case content the student sees.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display_name", "age", "sex", "setting", "presenting_complaint", "difficulty", "estimated_minutes"],
+      "properties": {
+        "display_name": { "$ref": "#/$defs/text" },
+        "age": { "type": "integer", "minimum": 0, "maximum": 120 },
+        "sex": { "enum": ["female", "male"] },
+        "setting": { "$ref": "#/$defs/text" },
+        "presenting_complaint": { "$ref": "#/$defs/text" },
+        "difficulty": { "enum": ["easy", "medium", "hard"] },
+        "estimated_minutes": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "clinical_background": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["occupation", "social_context", "facts"],
+      "properties": {
+        "occupation": { "$ref": "#/$defs/text" },
+        "social_context": { "$ref": "#/$defs/text" },
+        "facts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fact" } }
+      }
+    },
+
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "truth", "patient_says", "disclosure"],
+      "properties": {
+        "id": { "$ref": "#/$defs/fact_id" },
+        "category": {
+          "enum": [
+            "presenting_complaint",
+            "associated_symptom",
+            "pertinent_negative",
+            "past_medical_history",
+            "medication",
+            "allergy",
+            "family_history",
+            "social_history"
+          ]
+        },
+        "truth": {
+          "description": "Clinical wording used to check consistency. Never put it in the patient prompt.",
+          "$ref": "#/$defs/text"
+        },
+        "patient_says": {
+          "description": "The meaning in lay language. Not a line to repeat word for word.",
+          "$ref": "#/$defs/text"
+        },
+        "disclosure": { "enum": ["spontaneous", "open_question", "direct_question", "specific_follow_up"] },
+        "first_answer": {
+          "description": "Vague or evasive answer given before the fact is revealed.",
+          "$ref": "#/$defs/text"
+        },
+        "reveal_when": {
+          "description": "What the student must ask to unlock a specific_follow_up fact.",
+          "$ref": "#/$defs/text"
+        }
+      },
+      "if": {
+        "required": ["disclosure"],
+        "properties": { "disclosure": { "const": "specific_follow_up" } }
+      },
+      "then": { "required": ["first_answer", "reveal_when"] },
+      "else": { "properties": { "reveal_when": false } }
+    },
+
+    "osce_behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "personality",
+        "speaking_style",
+        "emotional_state",
+        "voice",
+        "opening_line",
+        "ideas_concerns_expectations",
+        "emotional_cues",
+        "question_for_doctor",
+        "reaction_to_plan",
+        "unknown_question_response"
+      ],
+      "properties": {
+        "personality": { "$ref": "#/$defs/text" },
+        "speaking_style": { "$ref": "#/$defs/text" },
+        "emotional_state": { "$ref": "#/$defs/text" },
+        "voice": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["voice_id", "tone_instructions"],
+          "properties": {
+            "voice_id": { "$ref": "#/$defs/text" },
+            "tone_instructions": { "$ref": "#/$defs/text" }
+          }
+        },
+        "opening_line": { "$ref": "#/$defs/text" },
+        "ideas_concerns_expectations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ideas", "concerns", "expectations"],
+          "properties": {
+            "ideas": { "$ref": "#/$defs/text" },
+            "concerns": { "$ref": "#/$defs/text" },
+            "expectations": { "$ref": "#/$defs/text" }
+          }
+        },
+        "emotional_cues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["trigger", "reaction", "reveals_fact_ids"],
+            "properties": {
+              "trigger": { "$ref": "#/$defs/text" },
+              "reaction": { "$ref": "#/$defs/text" },
+              "reveals_fact_ids": { "type": "array", "items": { "$ref": "#/$defs/fact_id" }, "uniqueItems": true }
+            }
+          }
+        },
+        "question_for_doctor": { "$ref": "#/$defs/text" },
+        "reaction_to_plan": { "$ref": "#/$defs/text" },
+        "unknown_question_response": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}
