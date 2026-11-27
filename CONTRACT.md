@@ -4,7 +4,9 @@
 Frontend only ever sees `public_card`. Hidden clinical facts never leave the backend.
 
 ## public_card
-{ "display_name": str, "age": int, "sex": str, "setting": str, "opening_line": str }
+{ "display_name": str, "age": int, "sex": "female|male", "setting": str, "presenting_complaint": str, "difficulty": "easy|medium|hard", "estimated_minutes": int }
+
+Source of this shape: `public_card` in `schema/patient_case.schema.json`.
 
 ## WebSocket  /ws/session?patient_id=<id>&persona_id=<optional>&mode=voice|text
 Audio format: PCM16, 24 kHz, mono, base64 inside JSON.
