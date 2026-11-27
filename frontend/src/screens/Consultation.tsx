@@ -1,6 +1,7 @@
 import { useState, type SubmitEvent } from 'react'
 import { Avatar } from '../components/Avatar'
 import type { PatientSummary } from '../protocol'
+import { transportKind } from '../session/selectTransport'
 import { useSession } from '../session/useSession'
 
 interface Props {
@@ -33,6 +34,7 @@ export function Consultation({ patient, onExit }: Props) {
             <p className="muted">
               {card.setting} · {card.presenting_complaint}
             </p>
+            {transportKind === 'mock' && <span className="badge mock">Mock session</span>}
           </div>
         </div>
         {ready ? (
