@@ -8,7 +8,10 @@ Frontend only ever sees `public_card`. Hidden clinical facts never leave the bac
 
 Source of this shape: `public_card` in `schema/patient_case.schema.json`.
 
-## WebSocket  /ws/session?patient_id=<id>&persona_id=<optional>&mode=voice|text
+## REST (implemented)
+- GET /patients -> [{"patient_id": str, "public_card": {...}}], sorted by patient_id, public data only
+
+## WebSocket  /ws/session?patient_id=<id>&mode=voice|text
 Audio format: PCM16, 24 kHz, mono, base64 inside JSON.
 
 Client -> server
@@ -27,9 +30,10 @@ Server -> client
 - {"type":"error","code":str,"message":str}   codes so far: busy, bad_message, upstream_closed, not_found, budget_exhausted
 - {"type":"session.ended","reason":"client|timeout|idle|budget|error","turns":int,"usage":{...}}
 
+The patient never speaks first. The first patient audio/text arrives only after the student's first message.
+
 Only one session can be active at a time. Max session length is set by the backend.
 
 ## Planned (shapes to be agreed before implementation)
-- GET  /patients        -> list of public_cards (id + public_card)
 - POST /evaluate        -> structured history + rubric checklist
 - POST /generate-case   -> new patient JSON from a clinical vignette
