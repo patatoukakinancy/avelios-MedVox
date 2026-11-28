@@ -1,14 +1,25 @@
 import logging
 
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import session as session_mod
 from .cases import CaseNotFound, InvalidPatientId, list_patients, load_case
-from .config import get_settings
+from .config import get_cors_origins, get_settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Standardized Patient Voice Simulator")
+
+# CORS for the REST routes only (CORSMiddleware ignores WebSocket scopes). Explicit origins, never "*".
+CORS_ORIGINS = get_cors_origins()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
 
 # Injection points for tests (fake upstream, test settings). No network in tests.
 settings_provider = get_settings

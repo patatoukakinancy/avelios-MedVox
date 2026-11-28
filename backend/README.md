@@ -15,6 +15,7 @@
      - `VAD_SILENCE_MS=500`
      - `VAD_PREFIX_PADDING_MS=300`
      - `REASONING_EFFORT=minimal`. Set it to `none` to omit reasoning.
+     - `CORS_ORIGINS`: comma-separated allowed origins for the REST routes (`GET /patients`). Empty or unset means `http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000`. A wildcard `*` is ignored.
 5. `python scripts/check_env.py` prints only whether each key is set, never its value.
 6. `python -m pytest -q` runs offline against a fake upstream.
 

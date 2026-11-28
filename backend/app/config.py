@@ -52,6 +52,29 @@ def _num(name: str, default, cast):
         return default
 
 
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+)
+
+
+def parse_cors_origins(raw: str | None) -> list[str]:
+    """Comma-separated origins; empty/unset -> defaults. A wildcard is never allowed."""
+    items = [o.strip().rstrip("/") for o in (raw or "").split(",")]
+    items = [o for o in items if o]
+    if "*" in items:
+        log.warning("CORS_ORIGINS wildcard ignored")
+        items = [o for o in items if o != "*"]
+    return items or list(DEFAULT_CORS_ORIGINS)
+
+
+def get_cors_origins() -> list[str]:
+    load_env()
+    return parse_cors_origins(os.getenv("CORS_ORIGINS"))
+
+
 def get_settings() -> Settings:
     load_env()
     effort = _str("REASONING_EFFORT", "minimal")
