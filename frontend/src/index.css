@@ -299,6 +299,248 @@ input:focus-visible {
   font-weight: 600;
 }
 
+/* Voice call */
+
+.call-stage {
+  --orb: clamp(96px, 27vw, 156px);
+
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  margin: 16px 0;
+  padding: 56px 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.live {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.live::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #14b8a6;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+/* The auto margins centre the row, and still let a short screen scroll. */
+.call-row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: clamp(10px, 5vw, 44px);
+  width: 100%;
+  margin-block: auto;
+}
+
+.participant {
+  --level: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 36px;
+  width: var(--orb);
+}
+
+.participant-label {
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+
+.participant[data-speaking='true'] .participant-label {
+  color: var(--accent);
+}
+
+.orb {
+  position: relative;
+  width: var(--orb);
+  height: var(--orb);
+}
+
+.orb-waves {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+.participant[data-speaking='true'] .orb-waves {
+  opacity: 1;
+}
+
+.halo,
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+/* Grows with the voice. */
+.halo {
+  background: rgb(20 184 166 / 24%);
+  transform: scale(calc(1.06 + var(--level) * 0.24));
+}
+
+.ring {
+  border: 2px solid #14b8a6;
+  animation: ring-wave 2.1s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+
+.ring:nth-of-type(3) {
+  animation-delay: -0.7s;
+}
+
+.ring:nth-of-type(4) {
+  animation-delay: -1.4s;
+}
+
+.orb-face {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--accent-soft);
+  transition: border-color 0.3s;
+}
+
+.participant[data-speaking='true'] .orb-face {
+  border-color: var(--accent);
+}
+
+.stethoscope {
+  width: 48%;
+  height: 48%;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.patient-avatar {
+  width: 100%;
+  height: 100%;
+}
+
+.patient-avatar .clothes {
+  fill: var(--accent);
+}
+
+.patient-avatar .hair {
+  fill: #134e4a;
+}
+
+.patient-avatar .skin {
+  fill: #fff;
+}
+
+.patient-avatar .features {
+  fill: #134e4a;
+}
+
+.patient-avatar .features path {
+  fill: none;
+  stroke: #134e4a;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.call-wave {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--orb);
+}
+
+.call-wave span {
+  width: 4px;
+  height: 40%;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.35;
+  transform: scaleY(var(--bar, 0.14));
+  transition: opacity 0.3s;
+}
+
+.call-wave[data-speaking='true'] span {
+  opacity: 1;
+}
+
+.call-hint {
+  margin: 20px 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+@keyframes ring-wave {
+  from {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  to {
+    transform: scale(1.42);
+    opacity: 0;
+  }
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* No movement: a single steady ring marks the speaker. */
+@media (prefers-reduced-motion: reduce) {
+  .live::before,
+  .ring {
+    animation: none;
+  }
+
+  .ring {
+    display: none;
+  }
+
+  .ring:nth-of-type(2) {
+    display: block;
+    border-width: 4px;
+    transform: scale(1.12);
+  }
+
+  .halo {
+    transform: scale(1.12);
+  }
+
+  .call-wave span {
+    transform: scaleY(0.4);
+  }
+}
+
+/* Text consultation */
+
 form {
   display: flex;
   gap: 8px;

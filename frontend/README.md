@@ -14,6 +14,11 @@ Use `?transport=mock` for UI work.
 - Talking over the patient stops playback and sends `interrupt` with `played_ms`. Audio arriving in the
   next 400 ms is dropped; this relies on the backend's `VAD_SILENCE_MS` being at least 400.
 - If the server opens a text session instead (`session.ready.mode`), the UI switches to text.
+- A live voice consultation shows a call view (`CallStage.tsx`) instead of text: a wave around
+  whoever is talking. The patient's wave follows playback. The server does not say when the student
+  stops, so the student's wave follows the mic volume (`STUDENT_SPEECH_RMS`); it stays off while the
+  patient's audio plays. The patient's drawing depends on `public_card.sex`.
+- The transcript appears when the session ends. A text consultation always shows it.
 - The student's transcript can arrive after the patient's reply, so `speech.started` adds a "…" line
   that the transcript replaces in place. Unfilled lines are dropped at the end of the session, or
   after 20 s when the student speaks again.

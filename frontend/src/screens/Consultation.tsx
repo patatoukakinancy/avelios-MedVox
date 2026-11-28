@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type SubmitEvent, type UIEvent } from 'react'
 import { Avatar } from '../components/Avatar'
+import { CallStage } from '../components/CallStage'
 import { VoiceControls } from '../components/VoiceControls'
 import type { PatientSummary, SessionMode } from '../protocol'
 import { transportKind } from '../session/selectTransport'
@@ -21,6 +22,14 @@ export function Consultation({ patient, mode, onExit }: Props) {
   // The server decides the mode that applies: voice can fall back to text.
   const activeMode = session.mode ?? mode
   const voiceFellBack = mode === 'voice' && activeMode === 'text'
+  // A live voice consultation shows no text; the transcript appears once it has ended.
+  const showCall = activeMode === 'voice' && session.status !== 'ended'
+  const emptyHint =
+    ready && session.transcript.length === 0
+      ? activeMode === 'voice'
+        ? 'Turn on the microphone and greet your patient to begin.'
+        : 'Greet your patient to begin.'
+      : null
 
   const transcriptRef = useRef<HTMLOListElement>(null)
   // Follow new messages unless the student has scrolled up to read earlier ones.
@@ -70,19 +79,19 @@ export function Consultation({ patient, mode, onExit }: Props) {
         )}
       </header>
 
-      <ol className="transcript" aria-live="polite" ref={transcriptRef} onScroll={handleScroll}>
-        {ready && session.transcript.length === 0 && (
-          <li className="empty">
-            {activeMode === 'voice' ? 'Turn on the microphone and greet your patient to begin.' : 'Greet your patient to begin.'}
-          </li>
-        )}
-        {session.transcript.map((item) => (
-          <li key={item.item_id} className={item.role}>
-            <span className="speaker">{item.role === 'user' ? 'You' : 'Patient'}</span>
-            {item.text}
-          </li>
-        ))}
-      </ol>
+      {showCall ? (
+        <CallStage voice={session.voice} live={ready} sex={card.sex} hint={emptyHint} />
+      ) : (
+        <ol className="transcript" aria-live="polite" ref={transcriptRef} onScroll={handleScroll}>
+          {emptyHint && <li className="empty">{emptyHint}</li>}
+          {session.transcript.map((item) => (
+            <li key={item.item_id} className={item.role}>
+              <span className="speaker">{item.role === 'user' ? 'You' : 'Patient'}</span>
+              {item.text}
+            </li>
+          ))}
+        </ol>
+      )}
 
       {session.status === 'connecting' && <p className="muted">Connecting…</p>}
       {session.status === 'ended' && <p className="muted">Session ended ({session.endedReason}).</p>}
