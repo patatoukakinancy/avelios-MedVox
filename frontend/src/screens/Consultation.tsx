@@ -1,20 +1,26 @@
 import { useLayoutEffect, useRef, useState, type SubmitEvent, type UIEvent } from 'react'
 import { Avatar } from '../components/Avatar'
-import type { PatientSummary } from '../protocol'
+import { VoiceControls } from '../components/VoiceControls'
+import type { PatientSummary, SessionMode } from '../protocol'
 import { transportKind } from '../session/selectTransport'
 import { useSession } from '../session/useSession'
 
 interface Props {
   patient: PatientSummary
+  mode: SessionMode
   onExit: () => void
 }
 
-export function Consultation({ patient, onExit }: Props) {
-  const session = useSession(patient)
+export function Consultation({ patient, mode, onExit }: Props) {
+  const session = useSession(patient, mode)
   const [draft, setDraft] = useState('')
 
   const card = session.card ?? patient.public_card
   const ready = session.status === 'ready'
+  const canSend = ready && !session.awaitingReply
+  // The server decides the mode that applies: voice can fall back to text.
+  const activeMode = session.mode ?? mode
+  const voiceFellBack = mode === 'voice' && activeMode === 'text'
 
   const transcriptRef = useRef<HTMLOListElement>(null)
   // Follow new messages unless the student has scrolled up to read earlier ones.
@@ -34,7 +40,7 @@ export function Consultation({ patient, onExit }: Props) {
   function handleSubmit(event: SubmitEvent) {
     event.preventDefault()
     const text = draft.trim()
-    if (!ready || !text) return
+    if (!canSend || !text) return
     followRef.current = true
     session.sendText(text)
     setDraft('')
@@ -66,7 +72,9 @@ export function Consultation({ patient, onExit }: Props) {
 
       <ol className="transcript" aria-live="polite" ref={transcriptRef} onScroll={handleScroll}>
         {ready && session.transcript.length === 0 && (
-          <li className="empty">Greet your patient to begin.</li>
+          <li className="empty">
+            {activeMode === 'voice' ? 'Turn on the microphone and greet your patient to begin.' : 'Greet your patient to begin.'}
+          </li>
         )}
         {session.transcript.map((item) => (
           <li key={item.item_id} className={item.role}>
@@ -79,19 +87,26 @@ export function Consultation({ patient, onExit }: Props) {
       {session.status === 'connecting' && <p className="muted">Connecting…</p>}
       {session.status === 'ended' && <p className="muted">Session ended ({session.endedReason}).</p>}
       {session.error && <p role="alert">{session.error}</p>}
+      {voiceFellBack && ready && (
+        <p role="alert">Voice is unavailable right now, so this consultation is in text.</p>
+      )}
 
-      <form onSubmit={handleSubmit}>
-        <input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Type a question…"
-          aria-label="Your question"
-          disabled={!ready}
-        />
-        <button type="submit" disabled={!ready || !draft.trim()}>
-          Send
-        </button>
-      </form>
+      {activeMode === 'voice' ? (
+        <VoiceControls voice={session.voice} ready={ready} />
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Type a question…"
+            aria-label="Your question"
+            disabled={!ready}
+          />
+          <button type="submit" disabled={!canSend || !draft.trim()}>
+            Send
+          </button>
+        </form>
+      )}
     </main>
   )
 }

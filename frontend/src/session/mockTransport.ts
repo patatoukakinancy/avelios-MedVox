@@ -1,8 +1,11 @@
 import type { ServerMessage } from '../protocol'
+import { openMockVoiceTransport } from './mockVoice'
 import type { OpenTransport } from './transport'
 
-// Fake text-mode server. Replies are placeholders with no clinical content.
-export const openMockTransport: OpenTransport = (patient, onMessage) => {
+// Fake server. Replies are placeholders with no clinical content.
+export const openMockTransport: OpenTransport = (patient, mode, onMessage) => {
+  if (mode === 'voice') return openMockVoiceTransport(patient, onMessage)
+
   const timers = new Set<number>()
   let turns = 0
   let ended = false
@@ -20,7 +23,7 @@ export const openMockTransport: OpenTransport = (patient, onMessage) => {
     timers.clear()
   }
 
-  emit({ type: 'session.ready', patient_public: patient.public_card }, 300)
+  emit({ type: 'session.ready', patient_public: patient.public_card, mode: 'text' }, 300)
 
   return {
     send(message) {
@@ -36,6 +39,7 @@ export const openMockTransport: OpenTransport = (patient, onMessage) => {
           emit({ type: 'transcript.delta', role: 'patient', item_id, text }, 400 + i * 200)
         })
         emit({ type: 'transcript.final', role: 'patient', item_id, text: chunks.join('') }, 400 + chunks.length * 200)
+        emit({ type: 'latency', turn: turns, ttfa_ms: null, ttft_ms: 400, vad_silence_ms: null }, 400 + chunks.length * 200)
       }
 
       if (message.type === 'session.end') {

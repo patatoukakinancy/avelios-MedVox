@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
 import { listPatients } from '../api/patients'
 import { Avatar } from '../components/Avatar'
-import type { PatientSummary } from '../protocol'
+import type { PatientSummary, SessionMode } from '../protocol'
+
+const MODES: { value: SessionMode; label: string }[] = [
+  { value: 'voice', label: 'Voice' },
+  { value: 'text', label: 'Text' },
+]
 
 interface Props {
+  mode: SessionMode
+  onModeChange: (mode: SessionMode) => void
   onStart: (patient: PatientSummary) => void
 }
 
-export function PatientSelect({ onStart }: Props) {
+export function PatientSelect({ mode, onModeChange, onStart }: Props) {
   // null while loading
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [failed, setFailed] = useState(false)
@@ -28,6 +35,15 @@ export function PatientSelect({ onStart }: Props) {
         <h1>Choose a patient</h1>
         <p className="muted">Practise history-taking with a virtual patient.</p>
       </header>
+      <fieldset className="mode-picker">
+        <legend>Consultation mode</legend>
+        {MODES.map(({ value, label }) => (
+          <label key={value}>
+            <input type="radio" name="mode" checked={mode === value} onChange={() => onModeChange(value)} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
       {failed && (
         <p role="alert">Could not load patients. Check that the backend is running, then reload the page.</p>
       )}

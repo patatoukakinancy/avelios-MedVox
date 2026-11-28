@@ -18,8 +18,8 @@ class Settings:
     openai_api_key: str = field(default="", repr=False)
     realtime_model: str = ""
     transcribe_model: str = ""
-    max_session_seconds: float = 240
-    idle_timeout_seconds: float = 45
+    max_session_seconds: float = 720
+    idle_timeout_seconds: float = 90
     max_output_tokens: int = 150
     vad_threshold: float = 0.5
     vad_silence_ms: int = 500
@@ -82,8 +82,8 @@ def get_settings() -> Settings:
         openai_api_key=_str("OPENAI_API_KEY"),
         realtime_model=_str("REALTIME_MODEL"),
         transcribe_model=_str("TRANSCRIBE_MODEL"),
-        max_session_seconds=_num("MAX_SESSION_SECONDS", 240, float),
-        idle_timeout_seconds=_num("IDLE_TIMEOUT_SECONDS", 45, float),
+        max_session_seconds=_num("MAX_SESSION_SECONDS", 720, float),
+        idle_timeout_seconds=_num("IDLE_TIMEOUT_SECONDS", 90, float),
         max_output_tokens=_num("MAX_OUTPUT_TOKENS", 150, int),
         vad_threshold=_num("VAD_THRESHOLD", 0.5, float),
         vad_silence_ms=_num("VAD_SILENCE_MS", 500, int),

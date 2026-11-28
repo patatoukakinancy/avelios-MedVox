@@ -57,11 +57,14 @@ NUMBER_WORDS = {
     "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 # Diagnosis-confirming phrases (regexes on normalised text). Jargon terms are added from tests/jargon.py.
-DIAGNOSIS_PATTERNS = [r"\byes\b", r"\byou(?:'re| are) right\b"]
+DIAGNOSIS_PATTERNS = [r"\byes\b", r"\byou(?:'re| are) right\b", r"\bmay be right\b", r"\bprobably right\b"]
 # Up to 4 words before a match: a negation within them ("not saying yes", "can't say yes") exempts the match.
 NEGATION_RE = re.compile(r"(?:\bnot|n't|\bnever|\bno\b)\W+(?:\w+\W+){0,2}$")
 DISCLAIMER_RE = re.compile(r"don't know|not sure|new to me|what that (?:word )?means|never heard|that word")
-DENIAL_RES = [re.compile(p) for p in (r"\bnothing else\b", r"\bno,", r"\bnot really\b")]
+DENIAL_RES = [re.compile(p) for p in (
+    r"\bnothing else\b", r"\b(?:i )?don't take anything else\b", r"\bno,? i (?:don't|haven't|never)\b")]
+# "not really" only counts as a denial in the same sentence as a subject keyword.
+SAME_SENTENCE_DENIAL_RE = re.compile(r"\bnot really\b")
 
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 
@@ -198,6 +201,7 @@ async def play(url: str, patient: str, turns: list[dict]) -> tuple[list[dict], d
         for turn in turns:
             await ws.send(json.dumps({"type": "text.send", "text": turn["say"]}))
             finals: list[str] = []
+            final_ids: list[dict] = []
             deltas: list[str] = []
             latency = None
             error = None
@@ -206,6 +210,7 @@ async def play(url: str, patient: str, turns: list[dict]) -> tuple[list[dict], d
                 t = msg["type"]
                 if t == "transcript.final" and msg["role"] == "patient":
                     finals.append(msg["text"])
+                    final_ids.append({"item_id": msg.get("item_id"), "response_id": msg.get("response_id")})
                 elif t == "transcript.delta" and msg["role"] == "patient":
                     deltas.append(msg["text"])
                 elif t == "latency":
@@ -221,7 +226,7 @@ async def play(url: str, patient: str, turns: list[dict]) -> tuple[list[dict], d
                             "expect_any": turn.get("expect_any", []),
                             "forbidden_phrases": turn.get("forbidden_phrases", []),
                             "subject": turn.get("subject", []),
-                            "latency": latency, "error": error})
+                            "final_ids": final_ids, "latency": latency, "error": error})
             print(f"\n> {turn['say']}\n< {reply or '(no reply)'}")
             if error and latency is None:
                 break
@@ -248,6 +253,15 @@ async def play_with_retry(url: str, patient: str, turns: list[dict]) -> tuple[li
 
 
 # ---------- evaluation ----------
+
+def denial_hits(reply: str, subject_keywords: list[str]) -> list[str]:
+    """Denial patterns in a reply; "not really" only when its sentence also names a subject keyword."""
+    n = norm(reply)
+    found = [rx.pattern for rx in DENIAL_RES if rx.search(n)]
+    if any(SAME_SENTENCE_DENIAL_RE.search(norm(s)) and keyword_hits(s, subject_keywords) for s in sentences(reply)):
+        found.append(SAME_SENTENCE_DENIAL_RE.pattern)
+    return found
+
 
 def _row(check: str, turn, status: str, detail: str = "") -> dict:
     return {"check": check, "turn": turn, "status": status, "detail": detail}
@@ -303,9 +317,10 @@ def evaluate(patient: str, script: dict, records: list[dict], opening_line: str 
         subjects = [c["fact"] for c in rec.get("checks", []) if c["type"] == "unlock"]
         subjects += [subject] if isinstance(subject, str) else list(subject)
         if subjects:
-            denials = [rx.pattern for rx in DENIAL_RES if rx.search(norm(rep))]
             # base keywords only: the broader unlock_also words are too generic to prove a contradiction
-            hits = [k for f in dict.fromkeys(subjects) for k in keyword_hits(rep, fact_keywords(script, f)[0])]
+            base = [k for f in dict.fromkeys(subjects) for k in fact_keywords(script, f)[0]]
+            hits = keyword_hits(rep, base)
+            denials = denial_hits(rep, base)
             bad = bool(denials and hits)
             rows.append(_row("self-contradiction", i, FAIL if bad else PASS,
                              f"denial {denials} + keyword {hits}" if bad else ""))
@@ -357,6 +372,10 @@ def save_transcript(patient: str, records: list[dict], rows: list[dict], usage: 
     out = [f"# Behavior check: {patient}", ""]
     for i, r in enumerate(records, start=1):
         out += [f"## Turn {i}", f"**Student:** {r['say']}", "", f"**Patient:** {r['reply'] or '(no reply)'}", ""]
+        for j, ids in enumerate(r.get("final_ids") or [], start=1):
+            out.append(f"_final {j}: item_id={ids.get('item_id')} response_id={ids.get('response_id')}_")
+        if r.get("final_ids"):
+            out.append("")
         lat = r.get("latency") or {}
         names = [c["type"] + (f"({c['fact']})" if c.get("fact") else "") for c in r.get("checks", [])]
         names += [k for k in ("expect_any", "forbidden_phrases") if r.get(k)]

@@ -122,6 +122,17 @@ def test_confirmation_fails():
     assert row(rows, "diagnosis")["status"] == bc.FAIL
 
 
+@pytest.mark.parametrize("reply", ["I think you may be right", "You're probably right, doctor.", "You are right."])
+def test_real_agreement_fails_diagnosis(reply):
+    rows = run([rec(reply, say="Could this be your heart?", checks=[{"type": "diagnosis"}])])
+    assert row(rows, "diagnosis")["status"] == bc.FAIL
+
+
+def test_real_i_hope_not_passes_diagnosis():
+    rows = run([rec("I hope not", say="Could this be your heart?", checks=[{"type": "diagnosis"}])])
+    assert row(rows, "diagnosis")["status"] == bc.PASS
+
+
 def test_word_boundaries():
     rows = run([rec("Yesterday it was worse.", say="Is it angina?", checks=[{"type": "diagnosis"}])])
     assert row(rows, "diagnosis")["status"] == bc.PASS
@@ -175,8 +186,33 @@ def test_self_contradiction_fails():
     assert row(bad, "self-contradiction")["status"] == bc.FAIL
     bad2 = run([rec("Nothing else. Well, some sildenafil.", checks=unlock)])
     assert row(bad2, "self-contradiction")["status"] == bc.FAIL
-    bad3 = run([rec("No, dear. Only the sildenafil.", checks=unlock)])
+    bad3 = run([rec("No, I don't take much. Only the sildenafil.", checks=unlock)])
     assert row(bad3, "self-contradiction")["status"] == bc.FAIL
+    bad4 = run([rec("I don't take anything else, just sildenafil.", checks=unlock)])
+    assert row(bad4, "self-contradiction")["status"] == bc.FAIL
+
+
+# Real replies from live transcripts.
+REAL_SCRIPT = {"keywords": {"chest_pain": ["pain", "tightness", "band"], "ibuprofen": ["ibuprofen", "knee"]}}
+
+
+def test_real_no_dear_is_not_a_denial():
+    reply = "No, dear, I wouldn't say pain. It's a tightness, like a band"
+    rows = run([rec(reply, subject="chest_pain")], script=REAL_SCRIPT)
+    assert row(rows, "self-contradiction")["status"] == bc.PASS
+
+
+def test_real_nothing_else_then_ibuprofen_is_contradiction():
+    reply = "Nothing else I take. I use ibuprofen from the chemist for my knee"
+    rows = run([rec(reply, subject="ibuprofen")], script=REAL_SCRIPT)
+    assert row(rows, "self-contradiction")["status"] == bc.FAIL
+
+
+def test_not_really_only_counts_in_same_sentence_as_keyword():
+    other_sentence = run([rec("Not really. I take sildenafil sometimes.", subject="sildenafil")])
+    assert row(other_sentence, "self-contradiction")["status"] == bc.PASS
+    same_sentence = run([rec("Not really, only sildenafil.", subject="sildenafil")])
+    assert row(same_sentence, "self-contradiction")["status"] == bc.FAIL
 
 
 def test_self_contradiction_passes_without_both_parts():
@@ -238,6 +274,17 @@ def test_shipped_script_features():
     assert set(c1["keywords"]["statin"]["unlock_also"]) == {"stopped", "cholesterol", "ache"}
     assert set(c2["keywords"]["diabetes_medication"]["unlock_also"]) == {"evening", "stomach", "don't take the evening"}
     json.dumps(c1), json.dumps(c2)
+
+
+# ---------- transcript ids ----------
+
+def test_transcript_records_item_and_response_ids(tmp_path, monkeypatch):
+    monkeypatch.setattr(bc, "OUT_DIR", tmp_path)
+    r = rec("Hello.", final_ids=[{"item_id": "item_a", "response_id": "resp_1"},
+                                 {"item_id": "item_b", "response_id": None}])
+    text = bc.save_transcript("case_01", [r, rec("Hi.")], [], {}).read_text(encoding="utf-8")
+    assert "item_id=item_a response_id=resp_1" in text
+    assert "item_id=item_b response_id=None" in text
 
 
 # ---------- --runs / aggregate ----------

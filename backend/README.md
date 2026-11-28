@@ -8,8 +8,8 @@
    - Required: `OPENAI_API_KEY`, `REALTIME_MODEL` (for example `gpt-realtime-2.1` or `gpt-realtime-2.1-mini`).
    - Recommended: `TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`. Without it there are no user transcripts in voice mode.
    - Optional, with defaults:
-     - `MAX_SESSION_SECONDS=240`
-     - `IDLE_TIMEOUT_SECONDS=45`
+     - `MAX_SESSION_SECONDS=720`
+     - `IDLE_TIMEOUT_SECONDS=90`
      - `MAX_OUTPUT_TOKENS=150`
      - `VAD_THRESHOLD=0.5` (raise it for noisy rooms)
      - `VAD_SILENCE_MS=500`
