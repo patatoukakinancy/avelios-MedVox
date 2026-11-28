@@ -154,3 +154,101 @@ def test_patients_endpoint_is_public_only():
     body = res.text
     for forbidden in ("clinical_background", "osce_behavior", "opening_line", "truth", "voice"):
         assert forbidden not in body
+
+
+# ---------- R4: REACTIONS block + persona line ----------
+
+import logging  # noqa: E402
+
+from app import prompt as prompt_mod  # noqa: E402
+from app.personas import PERSONA_LINES, persona_for  # noqa: E402
+
+REACTIONS_LINE = "REACTIONS: {reactions}"
+
+
+def _template_with_reactions():
+    """The real template; the REACTIONS line is appended if the schema file does not have it yet."""
+    t = load_template()
+    return t if "{reactions}" in t else t + "\n" + REACTIONS_LINE
+
+
+def _template_without_reactions():
+    return "\n".join(line for line in load_template().splitlines() if "{reactions}" not in line)
+
+
+def _generic_case():
+    return load_case("case_01").model_copy(update={"patient_id": "case_77"})
+
+
+def test_reactions_block_file_is_the_seven_line_text():
+    block = prompt_mod.load_reactions()
+    lines = block.splitlines()
+    assert len(lines) == 7
+    assert lines[0].startswith("REACTIONS (your feelings change how you speak")
+    assert lines[-1].startswith("- Show feeling only through your words and rhythm")
+
+
+@pytest.mark.parametrize("pid,persona", [("case_01", "stoic_downplayer"), ("case_02", "anxious_talker"),
+                                         ("case_77", "generic")])
+def test_persona_mapping(pid, persona):
+    assert persona_for(pid) == persona
+
+
+@pytest.mark.parametrize("pid", CASE_IDS)
+def test_reactions_rendered_once_with_persona_line(pid):
+    case = load_case(pid)
+    prompt = render_prompt(case, _template_with_reactions())
+    block = prompt_mod.load_reactions()
+    assert prompt.count(block) == 1
+    assert "{reactions}" not in prompt
+    line = PERSONA_LINES[persona_for(pid)]
+    assert line and prompt.count(line) == 1
+    assert f"REACTIONS: {block}\n{line}" in prompt
+    others = [v for k, v in PERSONA_LINES.items() if v and k != persona_for(pid)]
+    assert not any(o in prompt for o in others)
+
+
+def test_generic_case_has_no_persona_line():
+    prompt = render_prompt(_generic_case(), _template_with_reactions())
+    block = prompt_mod.load_reactions()
+    assert prompt.count(block) == 1
+    assert not any(v and v in prompt for v in PERSONA_LINES.values())
+    assert prompt_mod.render_reactions("case_77") == block
+
+
+@pytest.mark.parametrize("pid", CASE_IDS)
+def test_reactions_prompt_deterministic_and_fully_replaced(pid):
+    t = _template_with_reactions()
+    a, b = render_prompt(load_case(pid), t), render_prompt(load_case(pid), t)
+    assert a.encode("utf-8") == b.encode("utf-8")
+    for name in set(re.findall(r"\{[a-z_]+\}", t)):
+        assert name not in a, name
+
+
+@pytest.mark.parametrize("pid", CASE_IDS)
+def test_reactions_grow_prompt_by_at_most_1500_chars(pid):
+    case = load_case(pid)
+    before = len(render_prompt(case, _template_without_reactions()))
+    after = len(render_prompt(case, _template_with_reactions()))
+    assert 0 < after - before <= 1500, (before, after)
+
+
+def test_template_without_placeholder_renders_as_before_and_warns_once(monkeypatch, caplog):
+    monkeypatch.setattr(prompt_mod, "_warned_no_reactions", False)
+    t = _template_without_reactions()
+    case = load_case("case_01")
+    with caplog.at_level(logging.WARNING, logger="app.prompt"):
+        p1 = render_prompt(case, t)
+        p2 = render_prompt(load_case("case_02"), t)
+    assert prompt_mod.load_reactions() not in p1 and prompt_mod.load_reactions() not in p2
+    assert "{reactions}" not in p1
+    assert len([r for r in caplog.records if "reactions" in r.getMessage()]) == 1
+
+
+def test_reactions_lengths_summary(capsys):
+    with capsys.disabled():
+        for pid in CASE_IDS:
+            case = load_case(pid)
+            before = len(render_prompt(case, _template_without_reactions()))
+            after = len(render_prompt(case, _template_with_reactions()))
+            print(f"\n[reactions] {pid}: {before} -> {after} chars (+{after - before})")
