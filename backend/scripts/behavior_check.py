@@ -1,8 +1,9 @@
 """Behavior check against the LIVE relay (text mode). Costs real tokens: ~10 turns per patient per run.
 
-  python scripts/behavior_check.py --patient case_01 [--patient case_02] [--runs N] [--url ws://127.0.0.1:8000]
+  python scripts/behavior_check.py --patient case_01 [--patient case_02_emotion] [--runs N] [--url ws://127.0.0.1:8000]
 
-Plays backend/scripts/behavior_scripts/<patient>.json (N sessions in a row), saves one transcript per run to
+Plays backend/scripts/behavior_scripts/<patient>.json (N sessions in a row) against the script's "patient_id"
+(default: the script name), saves one transcript per run to
 backend/logs/behavior/<patient>_<timestamp>.md and prints a PASS/WARN/FAIL table (plus an aggregate table when N > 1).
 Checks are plain substring/regex, no extra model calls, and never assert exact wording:
 read the transcript and judge borderline results yourself.
@@ -14,15 +15,24 @@ Script file format (all optional fields may be left out):
   "turns": [{"say": str,
              "checks": [{"type": opening|leak|unlock|diagnosis, "fact": id, "severity": "warn"}],
              "expect_any": [kw, ...],          # check "direct-disclosure": FAIL if none appears
+             "expect_any_severity": "warn",    # ...WARN instead of FAIL
              "forbidden_phrases": [str, ...],  # check "forbidden-phrase": FAIL if any appears
-             "subject": fact_id | [fact_id]}]  # extra subject facts for "self-contradiction"
+             "subject": fact_id | [fact_id],   # extra subject facts for "self-contradiction"
+             "trigger": "bad_news",            # check "persistence" on the next 2 replies: WARN unless
+                                               #   a WORRY_LEXICON word appears
+             "max_words_ratio": 0.7,           # check "shorter-reply": FAIL if this reply has more words
+                                               #   than ratio * median of all earlier replies
+             "repeat_of": turn_number}]        # check "not-repeat": FAIL if token-set (Jaccard) similarity
+                                               #   to that earlier turn's reply is >= REPEAT_MAX_SIMILARITY
   "self-contradiction" runs on every turn that has an unlock check (or a "subject").
+  "no-stage-directions" runs on every reply: FAIL on "(", "[", "*" or the word "sighs".
 """
 import argparse
 import asyncio
 import itertools
 import json
 import re
+import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -65,6 +75,18 @@ DENIAL_RES = [re.compile(p) for p in (
     r"\bnothing else\b", r"\b(?:i )?don't take anything else\b", r"\bno,? i (?:don't|haven't|never)\b")]
 # "not really" only counts as a denial in the same sentence as a subject keyword.
 SAME_SENTENCE_DENIAL_RE = re.compile(r"\bnot really\b")
+STAGE_DIRECTION_RE = re.compile(r"[(\[*]|\bsighs\b")
+# A reply 1 and 2 turns after a "bad_news" turn should show the news has not been forgotten.
+WORRY_LEXICON = [
+    "worried", "worry", "worrying", "scared", "afraid", "frightened", "month", "die", "dying", "what will",
+    "can't stop thinking", "sorry, what", "can't take it in", "shock",
+]
+PERSISTENCE_TURNS = 2
+REPEAT_MAX_SIMILARITY = 0.6
+WORD_RE = re.compile(r"\w+(?:'\w+)?")
+# Turn fields copied from the script into each played record (all optional), with their defaults.
+TURN_FIELDS = {"checks": [], "expect_any": [], "expect_any_severity": None, "forbidden_phrases": [],
+               "subject": [], "trigger": None, "max_words_ratio": None, "repeat_of": None}
 
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 
@@ -126,6 +148,16 @@ def content_words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z]+", norm(text)) if len(w) > 2 and w not in STOPWORDS}
 
 
+def word_count(text: str) -> int:
+    return len(WORD_RE.findall(norm(text)))
+
+
+def token_similarity(a: str, b: str) -> float:
+    """Jaccard similarity of the two replies' lower-case word sets (1.0 = same words)."""
+    ta, tb = set(WORD_RE.findall(norm(a))), set(WORD_RE.findall(norm(b)))
+    return len(ta & tb) / len(ta | tb) if ta | tb else 1.0
+
+
 def _negated(n: str, start: int) -> bool:
     window = " ".join(n[:start].split()[-4:])
     return bool(NEGATION_RE.search(window + " " if window else ""))
@@ -181,7 +213,16 @@ def load_script(patient: str) -> dict:
     script = json.loads(path.read_text(encoding="utf-8"))
     if len(script["turns"]) > MAX_TURNS:
         raise SystemExit(f"{patient}: {len(script['turns'])} turns exceeds the cost cap of {MAX_TURNS}")
+    for i, turn in enumerate(script["turns"], start=1):
+        ref = turn.get("repeat_of")
+        if ref is not None and not (isinstance(ref, int) and 1 <= ref < i):
+            raise SystemExit(f"{patient}: turn {i} has repeat_of={ref!r}; it must be an earlier turn number")
     return script
+
+
+def script_patient_id(name: str, script: dict) -> str:
+    """The case a script plays: its "patient_id" (so case_01_emotion plays case_01), else the script name."""
+    return script.get("patient_id") or name
 
 
 # ---------- live session ----------
@@ -222,10 +263,8 @@ async def play(url: str, patient: str, turns: list[dict]) -> tuple[list[dict], d
                     error = f"session ended early ({msg['reason']})"
                     break
             reply = clean(" ".join(finals) if finals else "".join(deltas))
-            records.append({"say": turn["say"], "checks": turn.get("checks", []), "reply": reply,
-                            "expect_any": turn.get("expect_any", []),
-                            "forbidden_phrases": turn.get("forbidden_phrases", []),
-                            "subject": turn.get("subject", []),
+            records.append({"say": turn["say"], "reply": reply,
+                            **{k: turn.get(k, default) for k, default in TURN_FIELDS.items()},
                             "final_ids": final_ids, "latency": latency, "error": error})
             print(f"\n> {turn['say']}\n< {reply or '(no reply)'}")
             if error and latency is None:
@@ -287,6 +326,16 @@ def evaluate(patient: str, script: dict, records: list[dict], opening_line: str 
     rows.append(_row("jargon", "all", _status_of([x for _, f in jar for x in f]),
                      ", ".join(f"turn {i}: {_finding_detail(f)}" for i, f in jar)))
 
+    stage = [(i, sorted({m.group(0) for m in STAGE_DIRECTION_RE.finditer(norm(rep))}))
+             for i, rep in enumerate(replies, start=1)]
+    stage = [(i, found) for i, found in stage if found]
+    rows.append(_row("no-stage-directions", "all", FAIL if stage else PASS,
+                     ", ".join(f"turn {i}: {found}" for i, found in stage)))
+
+    # follow-up turn -> the bad-news turn it follows (only turns that were actually played)
+    bad_news = [i for i, rec in enumerate(records, start=1) if rec.get("trigger") == "bad_news"]
+    after_bad_news = {i + k: i for i in bad_news for k in range(1, PERSISTENCE_TURNS + 1) if i + k <= len(records)}
+
     for i, (rec, rep) in enumerate(zip(records, replies), start=1):
         for c in rec.get("checks", []):
             kind, fact = c["type"], c.get("fact")
@@ -310,8 +359,30 @@ def evaluate(patient: str, script: dict, records: list[dict], opening_line: str 
 
         if rec.get("expect_any"):
             hits = keyword_hits(rep, rec["expect_any"])
-            rows.append(_row("direct-disclosure", i, PASS if hits else FAIL,
+            status = PASS if hits else (WARN if rec.get("expect_any_severity") == "warn" else FAIL)
+            rows.append(_row("direct-disclosure", i, status,
                              f"matched: {hits}" if hits else f"none of {rec['expect_any']} found"))
+
+        if i in after_bad_news:
+            hits = keyword_hits(rep, WORRY_LEXICON)
+            rows.append(_row("persistence", i, PASS if hits else WARN,
+                             f"bad news at turn {after_bad_news[i]}: "
+                             + (f"matched: {hits}" if hits else "no worry word found")))
+
+        if rec.get("max_words_ratio") is not None:
+            earlier = [word_count(r) for r in replies[:i - 1] if r]
+            if not earlier:
+                rows.append(_row("shorter-reply", i, WARN, "no earlier replies to compare"))
+            else:
+                med, words, ratio = statistics.median(earlier), word_count(rep), rec["max_words_ratio"]
+                rows.append(_row("shorter-reply", i, PASS if words <= ratio * med else FAIL,
+                                 f"{words} words vs median {med:g} of earlier replies (limit {ratio:.0%})"))
+
+        ref = rec.get("repeat_of")
+        if isinstance(ref, int) and 1 <= ref < i:
+            sim = token_similarity(rep, replies[ref - 1])
+            rows.append(_row("not-repeat", i, PASS if sim < REPEAT_MAX_SIMILARITY else FAIL,
+                             f"similarity to turn {ref}: {sim:.2f}"))
 
         subject = rec.get("subject", [])
         subjects = [c["fact"] for c in rec.get("checks", []) if c["type"] == "unlock"]
@@ -378,7 +449,8 @@ def save_transcript(patient: str, records: list[dict], rows: list[dict], usage: 
             out.append("")
         lat = r.get("latency") or {}
         names = [c["type"] + (f"({c['fact']})" if c.get("fact") else "") for c in r.get("checks", [])]
-        names += [k for k in ("expect_any", "forbidden_phrases") if r.get(k)]
+        names += [k for k in ("expect_any", "forbidden_phrases", "max_words_ratio") if r.get(k)]
+        names += [f"{k}={r[k]}" for k in ("trigger", "repeat_of") if r.get(k)]
         out.append(f"_sentences={len(sentences(r['reply']))} ttft_ms={lat.get('ttft_ms')}_ checks: "
                    + (", ".join(names) or "length/jargon only"))
         out.append("")
@@ -395,7 +467,8 @@ def usage_summary(usage: dict) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Scripted behavior check against the live relay (text mode).")
-    ap.add_argument("--patient", action="append", required=True, help="repeatable")
+    ap.add_argument("--patient", action="append", required=True,
+                    help="script name in behavior_scripts/, e.g. case_01 or case_01_emotion (repeatable)")
     ap.add_argument("--url", default="ws://127.0.0.1:8000")
     ap.add_argument("--runs", type=int, default=1, help="sessions to run in a row per patient (default 1)")
     return ap
@@ -412,18 +485,19 @@ async def main() -> int:
     grand: dict = {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0, "input_token_details": {"cached_tokens": 0}}
     for patient in a.patient:
         script = load_script(patient)
+        pid = script_patient_id(patient, script)
         runs_rows: list[list[dict]] = []
         run_errors = 0
         for n in range(1, a.runs + 1):
-            print(f"\n===== {patient}: run {n}/{a.runs}, {len(script['turns'])} turns =====")
+            print(f"\n===== {patient} (patient {pid}): run {n}/{a.runs}, {len(script['turns'])} turns =====")
             try:
-                records, usage = await play_with_retry(a.url, patient, script["turns"])
+                records, usage = await play_with_retry(a.url, pid, script["turns"])
             except (RunError, OSError, asyncio.TimeoutError, WebSocketException) as exc:
                 run_errors += 1
                 bad = True
                 print(f"\n[run error] {type(exc).__name__}: {exc}")
                 continue
-            rows = evaluate(patient, script, records)
+            rows = evaluate(pid, script, records)
             runs_rows.append(rows)
             path = save_transcript(patient, records, rows, usage, suffix=f"_run{n}" if a.runs > 1 else "")
             print(f"\n--- {patient} run {n} results ---\n{render_table(rows)}")

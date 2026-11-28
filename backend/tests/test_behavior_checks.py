@@ -245,24 +245,24 @@ def test_forbidden_phrases():
 def test_missing_optional_fields_do_not_break():
     bare = {"say": "Hi", "reply": "Hello there.", "checks": [], "latency": None, "error": None}
     rows = bc.evaluate("case_01", {}, [bare], opening_line=OPENING)
-    assert [r["check"] for r in rows] == [f"length (<= {bc.MAX_SENTENCES} sentences)", "jargon"]
+    assert [r["check"] for r in rows] == [f"length (<= {bc.MAX_SENTENCES} sentences)", "jargon", "no-stage-directions"]
     # records without even the optional keys 'checks'/'latency'/'error' are tolerated
     bc.evaluate("case_01", {}, [{"say": "Hi", "reply": "Hello."}], opening_line=OPENING)
 
 
-@pytest.mark.parametrize("pid", ["case_01", "case_02"])
-def test_shipped_scripts_are_consistent(pid):
-    script = bc.load_script(pid)
+@pytest.mark.parametrize("name", ["case_01", "case_02", "case_01_emotion", "case_02_emotion"])
+def test_shipped_scripts_are_consistent(name):
+    script = bc.load_script(name)
     assert len(script["turns"]) <= bc.MAX_TURNS
     for turn in script["turns"]:
+        assert set(turn) <= {"say"} | set(bc.TURN_FIELDS), turn  # no misspelt field silently ignored
         for c in turn.get("checks", []):
             if "fact" in c:
                 assert c["fact"] in script["keywords"], c
     # evaluating a canned run exercises every check type in the shipped script without network
-    records = [rec("Probably just indigestion. My daughter booked this.", say=t["say"], checks=t.get("checks", []),
-                   expect_any=t.get("expect_any", []), forbidden_phrases=t.get("forbidden_phrases", []))
-               for t in script["turns"]]
-    bc.evaluate(pid, script, records)
+    records = [rec("Probably just indigestion. My daughter booked this.", say=t["say"],
+                   **{k: t.get(k, d) for k, d in bc.TURN_FIELDS.items()}) for t in script["turns"]]
+    bc.evaluate(bc.script_patient_id(name, script), script, records)
 
 
 def test_shipped_script_features():
@@ -274,6 +274,168 @@ def test_shipped_script_features():
     assert set(c1["keywords"]["statin"]["unlock_also"]) == {"stopped", "cholesterol", "ache"}
     assert set(c2["keywords"]["diabetes_medication"]["unlock_also"]) == {"evening", "stomach", "don't take the evening"}
     json.dumps(c1), json.dumps(c2)
+
+
+# ---------- R1: reaction checks ----------
+
+STAGE = "no-stage-directions"
+
+
+@pytest.mark.parametrize("reply", [
+    "(sighs) I suppose so.",
+    "[pause] Well, all right.",
+    "*laughs* Not likely.",
+    "He sighs. Fine.",
+    "Oh. SIGHS. Fine.",
+])
+def test_stage_directions_fail(reply):
+    rows = run([rec("Hello."), rec(reply)])
+    r = row(rows, STAGE)
+    assert r["status"] == bc.FAIL and "turn 2" in r["detail"] and "turn 1" not in r["detail"]
+
+
+@pytest.mark.parametrize("reply", ["I sigh at the stairs these days.", "Well... I suppose so - fine.", "Sigh. Fine."])
+def test_stage_directions_pass(reply):
+    # only "(", "[", "*" and the exact word "sighs" are flagged
+    assert row(run([rec(reply)]), STAGE)["status"] == bc.PASS
+
+
+BAD_NEWS_MARKERS = ["month", "what", "how can", "die", "tests", "can't be"]
+
+
+def test_expect_any_severity_warn():
+    warn = {"expect_any": BAD_NEWS_MARKERS, "expect_any_severity": "warn"}
+    assert row(run([rec("Right. Okay.", **warn)]), "direct-disclosure")["status"] == bc.WARN
+    assert row(run([rec("A month? That can't be right.", **warn)]), "direct-disclosure")["status"] == bc.PASS
+    # without severity the old behaviour (FAIL) is unchanged
+    hard = {"expect_any": BAD_NEWS_MARKERS}
+    assert row(run([rec("Right. Okay.", **hard)]), "direct-disclosure")["status"] == bc.FAIL
+
+
+@pytest.mark.parametrize("reply", [
+    "What? A month?", "How can you say that?", "I can't be dying, I feel fine.", "What tests have you even done?",
+    "I can’t be dying.",  # curly apostrophe
+])
+def test_bad_news_reaction_markers(reply):
+    assert row(run([rec(reply, expect_any=BAD_NEWS_MARKERS)]), "direct-disclosure")["status"] == bc.PASS
+
+
+def _bad_news_run(after1, after2, *more):
+    return run([rec("Hello."), rec("A month? What?", trigger="bad_news"), rec(after1), rec(after2),
+                *[rec(m) for m in more]])
+
+
+def test_persistence_passes_when_worry_persists():
+    rows = _bad_news_run("Sorry, what was the question? I'm still on that.", "I'm scared, doc.")
+    assert row(rows, "persistence", 3)["status"] == bc.PASS
+    assert row(rows, "persistence", 4)["status"] == bc.PASS
+    assert "bad news at turn 2" in row(rows, "persistence", 3)["detail"]
+
+
+def test_persistence_warns_when_patient_moves_on():
+    rows = _bad_news_run("After the stairs, usually.", "Can't stop thinking about it.", "Twenty a day.")
+    assert row(rows, "persistence", 3)["status"] == bc.WARN
+    assert row(rows, "persistence", 4)["status"] == bc.PASS
+    # only turns +1 and +2 are checked; the trigger turn itself is not
+    assert [r["turn"] for r in rows if r["check"] == "persistence"] == [3, 4]
+
+
+def test_persistence_only_on_played_turns_and_not_without_trigger():
+    short = run([rec("Hello."), rec("What?", trigger="bad_news"), rec("Fine.")])  # run stopped early
+    assert [r["turn"] for r in short if r["check"] == "persistence"] == [3]
+    assert not [r for r in run([rec("Hello."), rec("Fine.")]) if r["check"] == "persistence"]
+
+
+def test_max_words_ratio():
+    earlier = [rec("One two three four five six seven eight nine ten."),  # 10 words
+               rec("One two three four five six seven eight nine ten eleven twelve."),  # 12
+               rec("One two three four five six seven eight.")]  # 8 -> median 10, limit 7
+    ok = run([*earlier, rec("Yeah, yeah. I've heard it all.", max_words_ratio=0.7)])  # 6 words
+    r = row(ok, "shorter-reply", 4)
+    assert r["status"] == bc.PASS and "median 10" in r["detail"]
+    assert row(run([*earlier, rec("One two three four five six seven.", max_words_ratio=0.7)]),
+               "shorter-reply")["status"] == bc.PASS  # exactly at the limit
+    long = run([*earlier, rec("Look, I know, I know, everyone tells me that, it's hard.", max_words_ratio=0.7)])
+    assert row(long, "shorter-reply")["status"] == bc.FAIL
+
+
+def test_max_words_ratio_ignores_later_and_empty_replies_and_needs_a_baseline():
+    rows = run([rec("One two three four."), rec(""), rec("Two words.", max_words_ratio=0.7), rec(" ".join(["w"] * 50))])
+    assert row(rows, "shorter-reply", 3)["status"] == bc.PASS  # median of [4] only; 2 <= 2.8
+    first = run([rec("Hello there.", max_words_ratio=0.7)])
+    assert row(first, "shorter-reply")["status"] == bc.WARN
+    assert not [r for r in run([rec("Hi.")]) if r["check"] == "shorter-reply"]
+
+
+def test_word_count_and_similarity_helpers():
+    assert bc.word_count("I've told you, it's after the stairs.") == 7  # contractions are one word
+    assert bc.token_similarity("After the stairs.", "after the STAIRS") == 1.0
+    assert bc.token_similarity("a b", "c d") == 0.0
+    assert bc.token_similarity("a b c", "a b d") == pytest.approx(0.5)
+
+
+def test_not_repeat():
+    first = rec("Mostly when I climb the stairs at the restaurant.")
+    same = run([rec("Hi."), first, rec("Mostly when I climb the stairs at the restaurant, yes.", repeat_of=2)])
+    r = row(same, "not-repeat", 3)
+    assert r["status"] == bc.FAIL and "similarity to turn 2" in r["detail"]
+    varied = run([rec("Hi."), first, rec("I've told you twice now: stairs.", repeat_of=2)])
+    assert row(varied, "not-repeat", 3)["status"] == bc.PASS
+    assert not [r for r in run([rec("Hi."), first]) if r["check"] == "not-repeat"]
+
+
+def test_load_script_rejects_bad_repeat_of(tmp_path, monkeypatch):
+    monkeypatch.setattr(bc, "SCRIPTS_DIR", tmp_path)
+    for i, ref in enumerate([2, 0, "1"]):
+        (tmp_path / f"s{i}.json").write_text(json.dumps({"turns": [{"say": "a"}, {"say": "b", "repeat_of": ref}]}))
+        with pytest.raises(SystemExit, match="repeat_of"):
+            bc.load_script(f"s{i}")
+    (tmp_path / "ok.json").write_text(json.dumps({"turns": [{"say": "a"}, {"say": "b", "repeat_of": 1}]}))
+    assert bc.load_script("ok")["turns"][1]["repeat_of"] == 1
+
+
+def test_script_patient_id():
+    assert bc.script_patient_id("case_01_emotion", {"patient_id": "case_01"}) == "case_01"
+    assert bc.script_patient_id("case_02", {}) == "case_02"
+
+
+@pytest.mark.parametrize("name,pid", [("case_01_emotion", "case_01"), ("case_02_emotion", "case_02")])
+def test_emotion_scripts_cover_the_situations(name, pid):
+    script = bc.load_script(name)
+    turns = script["turns"]
+    says = [t["say"] for t in turns]
+    assert bc.script_patient_id(name, script) == pid
+    assert turns[0]["checks"] == [{"type": "opening"}]
+    assert not turns[1].get("checks") and not turns[1].get("expect_any")  # ordinary history question
+    bad = [i for i, t in enumerate(turns, start=1) if t.get("trigger") == "bad_news"]
+    assert len(bad) == 1 and says[bad[0] - 1] == "I'm afraid you will die within a month."
+    assert turns[bad[0] - 1]["expect_any"] == BAD_NEWS_MARKERS
+    assert bad[0] + bc.PERSISTENCE_TURNS <= len(turns)  # both follow-up turns exist
+    assert "It might be your heart." in says and {"type": "diagnosis"} in turns[says.index("It might be your heart.")]["checks"]
+    assert "Any orthopnoea or PND?" in says
+    assert any(s.startswith("That must be worrying, especially with your") for s in says)
+    assert "I'm sure it's nothing serious, don't worry." in says
+    assert says[-1] == "Is there anything else you'd like to ask?"
+    # the same question three times; the third ask is checked against the second
+    rep = next(i for i, t in enumerate(turns, start=1) if t.get("repeat_of"))
+    assert says.count(says[rep - 1]) == 3 and says[turns[rep - 1]["repeat_of"] - 1] == says[rep - 1]
+    assert [t["max_words_ratio"] for t in turns if "max_words_ratio" in t] == [0.7]
+    forbidden = ["i'd rather be dead", "kill myself", "you're right", "you may be right"]
+    assert turns[bad[0] - 1]["forbidden_phrases"] == forbidden
+
+
+def test_forbidden_reaction_phrases():
+    forbidden = {"forbidden_phrases": ["i'd rather be dead", "kill myself", "you're right", "you may be right"]}
+    assert row(run([rec("Then I'd rather be dead now.", **forbidden)]), "forbidden-phrase")["status"] == bc.FAIL
+    assert row(run([rec("You’re right, doc.", **forbidden)]), "forbidden-phrase")["status"] == bc.FAIL
+    assert row(run([rec("Don't say that. What happens now?", **forbidden)]), "forbidden-phrase")["status"] == bc.PASS
+
+
+def test_transcript_lists_new_turn_fields(tmp_path, monkeypatch):
+    monkeypatch.setattr(bc, "OUT_DIR", tmp_path)
+    recs = [rec("What?", trigger="bad_news"), rec("Fine.", repeat_of=1, max_words_ratio=0.7)]
+    text = bc.save_transcript("case_01_emotion", recs, [], {}).read_text(encoding="utf-8")
+    assert "trigger=bad_news" in text and "repeat_of=1" in text and "max_words_ratio" in text
 
 
 # ---------- transcript ids ----------
