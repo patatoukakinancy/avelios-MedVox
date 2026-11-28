@@ -1,4 +1,4 @@
-import type { PublicCard, Role } from '../protocol'
+import type { PublicCard, Role, SessionMode } from '../protocol'
 import type { SessionEvent } from './transport'
 
 export interface TranscriptItem {
@@ -12,6 +12,10 @@ export interface TranscriptItem {
 export interface SessionState {
   status: 'connecting' | 'ready' | 'ended'
   card: PublicCard | null
+  // The mode the server actually opened; voice can fall back to text.
+  mode: SessionMode | null
+  // A typed question is waiting for the end of the patient's reply.
+  awaitingReply: boolean
   transcript: TranscriptItem[]
   error: string | null
   endedReason: string | null
@@ -22,6 +26,8 @@ export type SessionAction = SessionEvent | { type: 'local.sent'; item_id: string
 export const initialState: SessionState = {
   status: 'connecting',
   card: null,
+  mode: null,
+  awaitingReply: false,
   transcript: [],
   error: null,
   endedReason: null,
@@ -56,10 +62,10 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
   switch (action.type) {
     case 'local.sent': {
       const item: TranscriptItem = { item_id: action.item_id, role: 'user', text: action.text, pending: true }
-      return { ...state, error: null, transcript: [...state.transcript, item] }
+      return { ...state, error: null, awaitingReply: true, transcript: [...state.transcript, item] }
     }
     case 'session.ready':
-      return { ...state, status: 'ready', card: action.patient_public }
+      return { ...state, status: 'ready', card: action.patient_public, mode: action.mode ?? null }
     case 'transcript.delta':
     case 'transcript.final': {
       const { item_id, role, text } = action
@@ -70,8 +76,12 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
     case 'error':
       return {
         ...state,
+        awaitingReply: false,
         error: Object.hasOwn(ERROR_TEXT, action.code) ? ERROR_TEXT[action.code] : action.message,
       }
+    // The server sends latency once the whole reply is done.
+    case 'latency':
+      return state.awaitingReply ? { ...state, awaitingReply: false } : state
     case 'session.ended':
       return { ...state, status: 'ended', endedReason: action.reason }
     case 'connection.lost':
@@ -82,10 +92,9 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
         // Keep a more specific error from the server if there is one.
         error: state.error ?? 'Lost the connection to the server.',
       }
-    // Voice mode and latency are not handled yet.
+    // Audio is handled outside React state (useVoice).
     case 'speech.started':
     case 'audio.delta':
-    case 'latency':
       return state
   }
 }

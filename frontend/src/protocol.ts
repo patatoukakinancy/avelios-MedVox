@@ -17,6 +17,8 @@ export interface PatientSummary {
 
 export type Role = 'user' | 'patient'
 
+export type SessionMode = 'voice' | 'text'
+
 export type ClientMessage =
   | { type: 'audio.append'; audio: string }
   | { type: 'text.send'; text: string }
@@ -24,12 +26,18 @@ export type ClientMessage =
   | { type: 'session.end' }
 
 export type ServerMessage =
-  | { type: 'session.ready'; patient_public: PublicCard }
+  | { type: 'session.ready'; patient_public: PublicCard; mode: SessionMode }
   | { type: 'speech.started' }
   | { type: 'audio.delta'; audio: string }
   | { type: 'transcript.delta'; role: Role; item_id: string; text: string }
   | { type: 'transcript.final'; role: Role; item_id: string; text: string }
-  | { type: 'latency'; turn: number; ttfa_ms: number | null; ttft_ms: number | null }
+  | {
+      type: 'latency'
+      turn: number
+      ttfa_ms: number | null
+      ttft_ms: number | null
+      vad_silence_ms: number | null
+    }
   | { type: 'error'; code: string; message: string }
   | {
       type: 'session.ended'
