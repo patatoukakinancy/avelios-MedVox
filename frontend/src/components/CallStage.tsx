@@ -4,7 +4,7 @@ import type { useVoice } from '../session/useVoice'
 import { PatientAvatar } from './PatientAvatar'
 
 // Mic loudness (RMS) that counts as the student talking. Raise it if room noise lights the circle.
-const STUDENT_SPEECH_RMS = 0.02
+const STUDENT_SPEECH_RMS = 0.04
 // Keeps a wave on through the short pauses between words.
 const HOLD_MS = 300
 // RMS drawn at full strength.
