@@ -18,7 +18,8 @@ export function useSession(patient: PatientSummary, mode: SessionMode) {
   useEffect(() => {
     const transport = openTransport(patient, mode, (event) => {
       handleEvent(event)
-      if (event.type !== 'audio.delta') dispatch(event)
+      if (event.type === 'speech.started') dispatch({ type: event.type, at: performance.now() })
+      else if (event.type !== 'audio.delta') dispatch(event)
     })
     transportRef.current = transport
     return () => {

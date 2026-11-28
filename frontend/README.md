@@ -14,6 +14,9 @@ Use `?transport=mock` for UI work.
 - Talking over the patient stops playback and sends `interrupt` with `played_ms`. Audio arriving in the
   next 400 ms is dropped; this relies on the backend's `VAD_SILENCE_MS` being at least 400.
 - If the server opens a text session instead (`session.ready.mode`), the UI switches to text.
+- The student's transcript can arrive after the patient's reply, so `speech.started` adds a "…" line
+  that the transcript replaces in place. Unfilled lines are dropped at the end of the session, or
+  after 20 s when the student speaks again.
 
 ## Mock or real consultation
 
