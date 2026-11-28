@@ -1,4 +1,4 @@
-import { useState, type SubmitEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type SubmitEvent, type UIEvent } from 'react'
 import { Avatar } from '../components/Avatar'
 import type { PatientSummary } from '../protocol'
 import { transportKind } from '../session/selectTransport'
@@ -16,10 +16,26 @@ export function Consultation({ patient, onExit }: Props) {
   const card = session.card ?? patient.public_card
   const ready = session.status === 'ready'
 
+  const transcriptRef = useRef<HTMLOListElement>(null)
+  // Follow new messages unless the student has scrolled up to read earlier ones.
+  const followRef = useRef(true)
+
+  // Runs after every render: status messages below the list also change its height.
+  useLayoutEffect(() => {
+    const list = transcriptRef.current
+    if (list && followRef.current) list.scrollTop = list.scrollHeight
+  })
+
+  function handleScroll(event: UIEvent<HTMLOListElement>) {
+    const { scrollHeight, scrollTop, clientHeight } = event.currentTarget
+    followRef.current = scrollHeight - scrollTop - clientHeight < 40
+  }
+
   function handleSubmit(event: SubmitEvent) {
     event.preventDefault()
     const text = draft.trim()
     if (!ready || !text) return
+    followRef.current = true
     session.sendText(text)
     setDraft('')
   }
@@ -48,7 +64,7 @@ export function Consultation({ patient, onExit }: Props) {
         )}
       </header>
 
-      <ol className="transcript" aria-live="polite">
+      <ol className="transcript" aria-live="polite" ref={transcriptRef} onScroll={handleScroll}>
         {ready && session.transcript.length === 0 && (
           <li className="empty">Greet your patient to begin.</li>
         )}
