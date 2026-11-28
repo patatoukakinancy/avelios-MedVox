@@ -20,7 +20,7 @@ class Settings:
     transcribe_model: str = ""
     max_session_seconds: float = 720
     idle_timeout_seconds: float = 90
-    max_output_tokens: int = 150
+    max_output_tokens: int = 500
     vad_threshold: float = 0.5
     vad_silence_ms: int = 500
     vad_prefix_padding_ms: int = 300
@@ -84,7 +84,7 @@ def get_settings() -> Settings:
         transcribe_model=_str("TRANSCRIBE_MODEL"),
         max_session_seconds=_num("MAX_SESSION_SECONDS", 720, float),
         idle_timeout_seconds=_num("IDLE_TIMEOUT_SECONDS", 90, float),
-        max_output_tokens=_num("MAX_OUTPUT_TOKENS", 150, int),
+        max_output_tokens=_num("MAX_OUTPUT_TOKENS", 500, int),
         vad_threshold=_num("VAD_THRESHOLD", 0.5, float),
         vad_silence_ms=_num("VAD_SILENCE_MS", 500, int),
         vad_prefix_padding_ms=_num("VAD_PREFIX_PADDING_MS", 300, int),

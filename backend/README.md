@@ -10,7 +10,7 @@
    - Optional, with defaults:
      - `MAX_SESSION_SECONDS=720`
      - `IDLE_TIMEOUT_SECONDS=90`
-     - `MAX_OUTPUT_TOKENS=150`
+     - `MAX_OUTPUT_TOKENS=500`
      - `VAD_THRESHOLD=0.5` (raise it for noisy rooms)
      - `VAD_SILENCE_MS=500`
      - `VAD_PREFIX_PADDING_MS=300`
