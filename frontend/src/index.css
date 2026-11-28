@@ -188,6 +188,13 @@ input:focus-visible {
   color: var(--danger);
 }
 
+.badge.mock {
+  background: var(--bg);
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+  text-transform: none;
+}
+
 .card button {
   margin-top: auto;
 }
