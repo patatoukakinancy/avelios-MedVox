@@ -31,7 +31,13 @@ export type ServerMessage =
   | { type: 'audio.delta'; audio: string }
   | { type: 'transcript.delta'; role: Role; item_id: string; text: string }
   | { type: 'transcript.final'; role: Role; item_id: string; text: string }
-  | { type: 'latency'; turn: number; ttfa_ms: number | null; ttft_ms: number | null }
+  | {
+      type: 'latency'
+      turn: number
+      ttfa_ms: number | null
+      ttft_ms: number | null
+      vad_silence_ms: number | null
+    }
   | { type: 'error'; code: string; message: string }
   | {
       type: 'session.ended'
