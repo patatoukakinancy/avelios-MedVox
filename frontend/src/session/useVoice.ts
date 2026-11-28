@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { createAudioPlayer } from '../audio/audioPlayer'
 import { startMicCapture, type MicCapture } from '../audio/micCapture'
-import { floatToPcm16Base64, SAMPLE_RATE } from '../audio/pcm'
+import { floatToPcm16Base64, rms, SAMPLE_RATE } from '../audio/pcm'
 import type { ClientMessage } from '../protocol'
 import type { SessionEvent } from './transport'
 
@@ -14,6 +14,9 @@ const STALE_AUDIO_MS = 400
 // 1 s of silence in 40 ms chunks, so the server hears that the question has ended.
 const SILENT_CHUNK = floatToPcm16Base64(new Float32Array(SAMPLE_RATE * 0.04))
 const SILENT_CHUNKS = 25
+
+// A mic level older than this is ignored (chunks arrive every 40 ms).
+const MIC_LEVEL_MAX_AGE_MS = 150
 
 function describeMicError(error: unknown) {
   const name = error instanceof DOMException ? error.name : ''
@@ -35,6 +38,7 @@ export function useVoice(send: (message: ClientMessage) => void) {
   // Changes on every start and stop, so that a late permission answer is discarded.
   const requestRef = useRef(0)
   const ignoreAudioUntilRef = useRef(0)
+  const micLevelRef = useRef({ value: 0, at: 0 })
 
   const stopMic = useCallback(() => {
     requestRef.current += 1
@@ -52,7 +56,9 @@ export function useVoice(send: (message: ClientMessage) => void) {
     try {
       const mic = await startMicCapture(
         (samples) => {
-          if (isCurrent()) send({ type: 'audio.append', audio: floatToPcm16Base64(samples) })
+          if (!isCurrent()) return
+          micLevelRef.current = { value: rms(samples), at: performance.now() }
+          send({ type: 'audio.append', audio: floatToPcm16Base64(samples) })
         },
         () => {
           if (isCurrent()) stopMic()
@@ -105,5 +111,12 @@ export function useVoice(send: (message: ClientMessage) => void) {
     [player, send, shutdown],
   )
 
-  return { micState, micError, patientSpeaking, startMic, turnMicOff, shutdown, handleEvent }
+  // Current loudness of each side. Polled every animation frame, so not React state.
+  const getLevels = useCallback(() => {
+    const { value, at } = micLevelRef.current
+    const fresh = micRef.current !== null && performance.now() - at < MIC_LEVEL_MAX_AGE_MS
+    return { student: fresh ? value : 0, patient: player.level() }
+  }, [player])
+
+  return { micState, micError, patientSpeaking, startMic, turnMicOff, shutdown, handleEvent, getLevels }
 }

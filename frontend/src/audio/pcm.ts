@@ -1,6 +1,13 @@
 // Audio format from CONTRACT.md: PCM16 little-endian, 24 kHz, mono, base64.
 export const SAMPLE_RATE = 24_000
 
+// Loudness of a block of samples, from 0 (silence) to 1.
+export function rms(samples: Float32Array) {
+  let sum = 0
+  for (const sample of samples) sum += sample * sample
+  return Math.sqrt(sum / (samples.length || 1))
+}
+
 export function floatToPcm16Base64(samples: Float32Array): string {
   const bytes = new Uint8Array(samples.length * 2)
   const view = new DataView(bytes.buffer)

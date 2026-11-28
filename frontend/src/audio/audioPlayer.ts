@@ -1,4 +1,4 @@
-import { pcm16Base64ToFloat, SAMPLE_RATE } from './pcm'
+import { pcm16Base64ToFloat, rms, SAMPLE_RATE } from './pcm'
 
 // Head start for the first chunk of a reply, to absorb network jitter. Tune if there are gaps.
 const LEAD_SECONDS = 0.05
@@ -11,6 +11,9 @@ interface Segment {
 // Plays audio.delta chunks back to back.
 export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
   let context: AudioContext | null = null
+  // All sources play through the analyser, which only measures them for the call animation.
+  let analyser: AnalyserNode | null = null
+  const waveform = new Float32Array(1024) // about 43 ms
   const active = new Set<AudioBufferSourceNode>()
   let segments: Segment[] = []
   let nextStart = 0
@@ -28,8 +31,13 @@ export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
 
   function ensureContext() {
     context ??= new AudioContext({ sampleRate: SAMPLE_RATE })
+    if (!analyser) {
+      analyser = context.createAnalyser()
+      analyser.fftSize = waveform.length
+      analyser.connect(context.destination)
+    }
     void context.resume()
-    return context
+    return { output: context, input: analyser }
   }
 
   return {
@@ -47,12 +55,12 @@ export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
       }
       if (samples.length === 0) return
 
-      const output = ensureContext()
+      const { output, input } = ensureContext()
       const buffer = output.createBuffer(1, samples.length, SAMPLE_RATE)
       buffer.copyToChannel(samples, 0)
       const source = output.createBufferSource()
       source.buffer = buffer
-      source.connect(output.destination)
+      source.connect(input)
 
       const earliest = output.currentTime + (active.size === 0 ? LEAD_SECONDS : 0)
       const start = Math.max(nextStart, earliest)
@@ -78,11 +86,18 @@ export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
       return Math.round(seconds * 1000)
     },
     isPlaying: () => active.size > 0,
+    // Loudness of what is playing right now.
+    level() {
+      if (!analyser || active.size === 0) return 0
+      analyser.getFloatTimeDomainData(waveform)
+      return rms(waveform)
+    },
     // The player can be used again afterwards; a new context is created on demand.
     close() {
       stop()
       void context?.close()
       context = null
+      analyser = null
     },
   }
 }
