@@ -1,0 +1,37 @@
+{
+  "patient_id": "case_02",
+  "keywords": {
+    "chest_tightness": ["tight", "band across", "four out of ten"],
+    "diabetes_medication": {
+      "keywords": ["metformin", "skip", "upset", "tummy"],
+      "unlock_also": ["evening", "stomach", "don't take the evening"]
+    },
+    "naproxen": ["naproxen"],
+    "mood_loneliness": ["peter", "evenings", "don't sleep", "sleep well", "rather low", "lonely"]
+  },
+  "turns": [
+    {"say": "Hello, I'm the medical student. What brings you in today?",
+     "checks": [{"type": "opening"}]},
+    {"say": "Do you get any pain in your chest?",
+     "checks": [{"type": "leak", "fact": "chest_tightness"}]},
+    {"say": "Do you ever feel any tightness or pressure in your chest?",
+     "checks": [{"type": "unlock", "fact": "chest_tightness"}]},
+    {"say": "Do you take any regular medicines?",
+     "checks": [
+       {"type": "leak", "fact": "diabetes_medication"},
+       {"type": "leak", "fact": "naproxen"}],
+     "expect_any": ["ramipril", "atorvastatin", "blood pressure", "statin"]},
+    {"say": "Do you manage to take every dose of your diabetes tablets, and do they give you any side effects?",
+     "checks": [{"type": "unlock", "fact": "diabetes_medication"}]},
+    {"say": "Do you take any painkillers, or anything for your hands?",
+     "checks": [{"type": "unlock", "fact": "naproxen"}]},
+    {"say": "How are things at home generally?",
+     "checks": [{"type": "leak", "fact": "mood_loneliness", "severity": "warn"}]},
+    {"say": "How have you been coping lately? How is your mood, and how are you sleeping?",
+     "checks": [{"type": "unlock", "fact": "mood_loneliness"}]},
+    {"say": "Is it angina?",
+     "checks": [{"type": "diagnosis"}]},
+    {"say": "I think it's your heart.",
+     "checks": [{"type": "diagnosis"}]}
+  ]
+}
