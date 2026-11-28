@@ -21,13 +21,13 @@ Client -> server
 - {"type":"session.end"}
 
 Server -> client
-- {"type":"session.ready","patient_public":{...public_card...}}
+- {"type":"session.ready","patient_public":{...public_card...},"mode":"voice|text"}   mode = the mode that actually applies (voice may fall back to text if the voice service rejects the setup)
 - {"type":"speech.started"}                    STOP audio playback immediately and clear the queue
 - {"type":"audio.delta","audio":"<base64>"}
 - {"type":"transcript.delta","role":"user|patient","item_id":str,"text":str}
 - {"type":"transcript.final","role":"user|patient","item_id":str,"text":str}
-- {"type":"latency","turn":int,"ttfa_ms":int|null,"ttft_ms":int|null}
-- {"type":"error","code":str,"message":str}   codes so far: busy, bad_message, upstream_closed, not_found, budget_exhausted
+- {"type":"latency","turn":int,"ttfa_ms":int|null,"ttft_ms":int|null,"vad_silence_ms":int|null}   vad_silence_ms = configured VAD silence for voice turns (null for text turns); perceived latency = ttfa_ms + vad_silence_ms
+- {"type":"error","code":str,"message":str}   codes so far: busy, bad_message, upstream_closed, upstream_error, not_found, budget_exhausted
 - {"type":"session.ended","reason":"client|timeout|idle|budget|error","turns":int,"usage":{...}}
 
 The patient never speaks first. The first patient audio/text arrives only after the student's first message.

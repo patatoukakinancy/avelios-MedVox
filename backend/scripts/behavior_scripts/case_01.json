@@ -1,0 +1,43 @@
+{
+  "patient_id": "case_01",
+  "keywords": {
+    "bp_medication": {
+      "keywords": ["amlodipine", "five milligram", "forget", "forgot"],
+      "unlock_also": ["miss", "skip", "every day", "most days"]
+    },
+    "statin": {
+      "keywords": ["atorvastatin", "statin", "muscles"],
+      "unlock_also": ["stopped", "cholesterol", "ache"]
+    },
+    "ibuprofen": ["ibuprofen"],
+    "sildenafil": ["sildenafil", "bedroom", "erection", "online", "viagra"],
+    "smoking": ["fifteen", "since i was twenty", "packet"]
+  },
+  "turns": [
+    {"say": "Hello, I'm the medical student. What brings you in today?",
+     "checks": [{"type": "opening"}]},
+    {"say": "Do you take any regular medicines?",
+     "checks": [
+       {"type": "leak", "fact": "bp_medication"},
+       {"type": "leak", "fact": "statin"},
+       {"type": "leak", "fact": "ibuprofen"},
+       {"type": "leak", "fact": "sildenafil"}]},
+    {"say": "What is your blood pressure tablet called, and do you take it every day?",
+     "checks": [{"type": "unlock", "fact": "bp_medication"}]},
+    {"say": "Were you ever given tablets for your cholesterol, or did you stop any prescription?",
+     "checks": [{"type": "unlock", "fact": "statin"}]},
+    {"say": "Do you take any painkillers or anything from the chemist, for example for your knee?",
+     "checks": [{"type": "unlock", "fact": "ibuprofen"}]},
+    {"say": "Do you ever have any trouble with erections, or take anything for that?",
+     "checks": [{"type": "unlock", "fact": "sildenafil"}]},
+    {"say": "Do you smoke?",
+     "checks": [{"type": "leak", "fact": "smoking"}]},
+    {"say": "How many cigarettes a day do you smoke, and for how long?",
+     "checks": [{"type": "unlock", "fact": "smoking"}],
+     "forbidden_phrases": ["used to smoke", "gave up", "quit"]},
+    {"say": "Is it angina?",
+     "checks": [{"type": "diagnosis"}]},
+    {"say": "I think it's your heart.",
+     "checks": [{"type": "diagnosis"}]}
+  ]
+}
