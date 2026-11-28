@@ -1,16 +1,18 @@
 import { useLayoutEffect, useRef, useState, type SubmitEvent, type UIEvent } from 'react'
 import { Avatar } from '../components/Avatar'
-import type { PatientSummary } from '../protocol'
+import { VoiceControls } from '../components/VoiceControls'
+import type { PatientSummary, SessionMode } from '../protocol'
 import { transportKind } from '../session/selectTransport'
 import { useSession } from '../session/useSession'
 
 interface Props {
   patient: PatientSummary
+  mode: SessionMode
   onExit: () => void
 }
 
-export function Consultation({ patient, onExit }: Props) {
-  const session = useSession(patient)
+export function Consultation({ patient, mode, onExit }: Props) {
+  const session = useSession(patient, mode)
   const [draft, setDraft] = useState('')
 
   const card = session.card ?? patient.public_card
@@ -66,7 +68,9 @@ export function Consultation({ patient, onExit }: Props) {
 
       <ol className="transcript" aria-live="polite" ref={transcriptRef} onScroll={handleScroll}>
         {ready && session.transcript.length === 0 && (
-          <li className="empty">Greet your patient to begin.</li>
+          <li className="empty">
+            {mode === 'voice' ? 'Turn on the microphone and greet your patient to begin.' : 'Greet your patient to begin.'}
+          </li>
         )}
         {session.transcript.map((item) => (
           <li key={item.item_id} className={item.role}>
@@ -80,18 +84,22 @@ export function Consultation({ patient, onExit }: Props) {
       {session.status === 'ended' && <p className="muted">Session ended ({session.endedReason}).</p>}
       {session.error && <p role="alert">{session.error}</p>}
 
-      <form onSubmit={handleSubmit}>
-        <input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Type a question…"
-          aria-label="Your question"
-          disabled={!ready}
-        />
-        <button type="submit" disabled={!ready || !draft.trim()}>
-          Send
-        </button>
-      </form>
+      {mode === 'voice' ? (
+        <VoiceControls voice={session.voice} ready={ready} />
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Type a question…"
+            aria-label="Your question"
+            disabled={!ready}
+          />
+          <button type="submit" disabled={!ready || !draft.trim()}>
+            Send
+          </button>
+        </form>
+      )}
     </main>
   )
 }

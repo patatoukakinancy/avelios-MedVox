@@ -1,17 +1,17 @@
-import type { ClientMessage } from '../protocol'
+import type { ClientMessage, SessionMode } from '../protocol'
 import { parseServerMessage } from './parseServerMessage'
 import type { OpenTransport } from './transport'
 
 const READY_TIMEOUT_MS = 10_000
 const END_TIMEOUT_MS = 3_000
 
-function sessionUrl(patientId: string) {
+function sessionUrl(patientId: string, mode: SessionMode) {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const query = new URLSearchParams({ patient_id: patientId, mode: 'text' })
+  const query = new URLSearchParams({ patient_id: patientId, mode })
   return `${scheme}://${window.location.host}/ws/session?${query}`
 }
 
-export const openWebSocketTransport: OpenTransport = (patient, onEvent) => {
+export const openWebSocketTransport: OpenTransport = (patient, mode, onEvent) => {
   let socket: WebSocket | null = null
   // Set once the session is over or the caller closed it: no more events after that.
   let done = false
@@ -41,7 +41,7 @@ export const openWebSocketTransport: OpenTransport = (patient, onEvent) => {
   // Connect on the next tick: React StrictMode mounts, closes and mounts again,
   // and only one backend session may be active at a time.
   const connectTimer = window.setTimeout(() => {
-    socket = new WebSocket(sessionUrl(patient.patient_id))
+    socket = new WebSocket(sessionUrl(patient.patient_id, mode))
     readyTimer = window.setTimeout(lose, READY_TIMEOUT_MS)
 
     socket.onmessage = (event) => {
@@ -51,7 +51,8 @@ export const openWebSocketTransport: OpenTransport = (patient, onEvent) => {
         console.warn('[ws] ignored message', event.data)
         return
       }
-      if (import.meta.env.DEV) console.debug('[ws]', message)
+      // Audio chunks are left out: they would flood the console.
+      if (import.meta.env.DEV && message.type !== 'audio.delta') console.debug('[ws]', message)
       if (message.type === 'session.ready') window.clearTimeout(readyTimer)
       if (message.type === 'session.ended') finish()
       onEvent(message)

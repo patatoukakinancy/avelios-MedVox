@@ -1,7 +1,15 @@
 # MedVox frontend
 
 React + TypeScript + Vite. The patient list comes from the backend (`GET /patients`).
-The consultation is text mode only and uses a mock session by default.
+The consultation can be Voice or Text (chosen before it starts; Text is the default, see `DEFAULT_MODE`
+in `src/App.tsx`). It uses a mock session by default.
+
+## Voice mode
+
+- Chrome or Edge, and preferably wired headphones.
+- Audio is sent only while the microphone is on.
+- With the mock, your own speech is played back to you (a rough volume-based stand-in for the backend).
+- Not done yet: sending `interrupt` with `played_ms` when the student talks over the patient.
 
 ## Mock or real consultation
 

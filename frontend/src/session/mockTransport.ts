@@ -1,8 +1,11 @@
 import type { ServerMessage } from '../protocol'
+import { openMockVoiceTransport } from './mockVoice'
 import type { OpenTransport } from './transport'
 
-// Fake text-mode server. Replies are placeholders with no clinical content.
-export const openMockTransport: OpenTransport = (patient, onMessage) => {
+// Fake server. Replies are placeholders with no clinical content.
+export const openMockTransport: OpenTransport = (patient, mode, onMessage) => {
+  if (mode === 'voice') return openMockVoiceTransport(patient, onMessage)
+
   const timers = new Set<number>()
   let turns = 0
   let ended = false

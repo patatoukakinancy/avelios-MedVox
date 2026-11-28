@@ -17,6 +17,8 @@ export interface PatientSummary {
 
 export type Role = 'user' | 'patient'
 
+export type SessionMode = 'voice' | 'text'
+
 export type ClientMessage =
   | { type: 'audio.append'; audio: string }
   | { type: 'text.send'; text: string }
