@@ -2,8 +2,10 @@ import type { ClientMessage, SessionMode } from '../protocol'
 import { parseServerMessage } from './parseServerMessage'
 import type { OpenTransport } from './transport'
 
-const READY_TIMEOUT_MS = 10_000
-const END_TIMEOUT_MS = 3_000
+// The backend may try up to three upstream setups before session.ready,
+// and may take about 5 s to close upstream before session.ended.
+const READY_TIMEOUT_MS = 30_000
+const END_TIMEOUT_MS = 8_000
 
 function sessionUrl(patientId: string, mode: SessionMode) {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'

@@ -4,8 +4,8 @@ import { openWebSocketTransport } from './webSocketTransport'
 
 type TransportKind = 'mock' | 'ws'
 
-// Switch to 'ws' once the backend serves /ws/session. ?transport=mock|ws overrides it.
-const DEFAULT_TRANSPORT: TransportKind = 'mock'
+// The real backend. ?transport=mock switches to the fake patient (no backend session, no API cost).
+const DEFAULT_TRANSPORT: TransportKind = 'ws'
 
 const requested = new URLSearchParams(window.location.search).get('transport')
 

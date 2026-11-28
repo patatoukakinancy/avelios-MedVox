@@ -81,7 +81,7 @@ export function openMockVoiceTransport(
     else idleTimer = window.setTimeout(reply, NO_AUDIO_MS)
   }
 
-  emit({ type: 'session.ready', patient_public: patient.public_card }, 300)
+  emit({ type: 'session.ready', patient_public: patient.public_card, mode: 'voice' }, 300)
 
   return {
     send(message) {

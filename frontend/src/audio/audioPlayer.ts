@@ -26,7 +26,17 @@ export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
     onPlayingChange(false)
   }
 
+  function ensureContext() {
+    context ??= new AudioContext({ sampleRate: SAMPLE_RATE })
+    void context.resume()
+    return context
+  }
+
   return {
+    // The audio output can take a few hundred ms to start: do it before the first reply.
+    prepare() {
+      ensureContext()
+    },
     enqueue(base64: string) {
       let samples
       try {
@@ -37,15 +47,14 @@ export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
       }
       if (samples.length === 0) return
 
-      context ??= new AudioContext({ sampleRate: SAMPLE_RATE })
-      void context.resume()
-      const buffer = context.createBuffer(1, samples.length, SAMPLE_RATE)
+      const output = ensureContext()
+      const buffer = output.createBuffer(1, samples.length, SAMPLE_RATE)
       buffer.copyToChannel(samples, 0)
-      const source = context.createBufferSource()
+      const source = output.createBufferSource()
       source.buffer = buffer
-      source.connect(context.destination)
+      source.connect(output.destination)
 
-      const earliest = context.currentTime + (active.size === 0 ? LEAD_SECONDS : 0)
+      const earliest = output.currentTime + (active.size === 0 ? LEAD_SECONDS : 0)
       const start = Math.max(nextStart, earliest)
       nextStart = start + buffer.duration
       segments.push({ start, duration: buffer.duration })
@@ -58,9 +67,10 @@ export function createAudioPlayer(onPlayingChange: (playing: boolean) => void) {
       onPlayingChange(true)
     },
     stop,
-    // Audio scheduled since the last stop() that the context has already rendered.
+    // How much of the audio queued since the last stop() has actually been heard.
     playedMs() {
-      const now = context?.currentTime ?? 0
+      // outputLatency: rendered audio that has not reached the speakers yet.
+      const now = context ? context.currentTime - (context.outputLatency || 0) : 0
       const seconds = segments.reduce(
         (sum, { start, duration }) => sum + Math.max(0, Math.min(duration, now - start)),
         0,

@@ -1,11 +1,19 @@
 import { useCallback, useRef, useState } from 'react'
 import { createAudioPlayer } from '../audio/audioPlayer'
 import { startMicCapture, type MicCapture } from '../audio/micCapture'
-import { floatToPcm16Base64 } from '../audio/pcm'
+import { floatToPcm16Base64, SAMPLE_RATE } from '../audio/pcm'
 import type { ClientMessage } from '../protocol'
 import type { SessionEvent } from './transport'
 
 export type MicState = 'off' | 'starting' | 'on'
+
+// After a barge-in, audio of the interrupted reply may still be on its way. The next reply
+// cannot start this soon, because the server first waits for silence (VAD_SILENCE_MS, 500).
+const STALE_AUDIO_MS = 400
+
+// 1 s of silence in 40 ms chunks, so the server hears that the question has ended.
+const SILENT_CHUNK = floatToPcm16Base64(new Float32Array(SAMPLE_RATE * 0.04))
+const SILENT_CHUNKS = 25
 
 function describeMicError(error: unknown) {
   const name = error instanceof DOMException ? error.name : ''
@@ -26,6 +34,7 @@ export function useVoice(send: (message: ClientMessage) => void) {
   const micRef = useRef<MicCapture | null>(null)
   // Changes on every start and stop, so that a late permission answer is discarded.
   const requestRef = useRef(0)
+  const ignoreAudioUntilRef = useRef(0)
 
   const stopMic = useCallback(() => {
     requestRef.current += 1
@@ -39,6 +48,7 @@ export function useVoice(send: (message: ClientMessage) => void) {
     const isCurrent = () => request === requestRef.current
     setMicError(null)
     setMicState('starting')
+    player.prepare()
     try {
       const mic = await startMicCapture(
         (samples) => {
@@ -60,6 +70,14 @@ export function useVoice(send: (message: ClientMessage) => void) {
       setMicError(describeMicError(error))
       setMicState('off')
     }
+  }, [player, send, stopMic])
+
+  // The student's own "microphone off". Ending the session uses shutdown() instead.
+  const turnMicOff = useCallback(() => {
+    if (micRef.current) {
+      for (let i = 0; i < SILENT_CHUNKS; i++) send({ type: 'audio.append', audio: SILENT_CHUNK })
+    }
+    stopMic()
   }, [send, stopMic])
 
   const shutdown = useCallback(() => {
@@ -69,12 +87,23 @@ export function useVoice(send: (message: ClientMessage) => void) {
 
   const handleEvent = useCallback(
     (event: SessionEvent) => {
-      if (event.type === 'audio.delta') player.enqueue(event.audio)
-      if (event.type === 'speech.started') player.stop()
+      if (event.type === 'audio.delta' && performance.now() >= ignoreAudioUntilRef.current) {
+        player.enqueue(event.audio)
+      }
+      if (event.type === 'speech.started') {
+        const bargedIn = player.isPlaying()
+        // Read before stop(), which resets the count for the next reply.
+        const playedMs = player.playedMs()
+        player.stop()
+        if (bargedIn) {
+          ignoreAudioUntilRef.current = performance.now() + STALE_AUDIO_MS
+          send({ type: 'interrupt', played_ms: playedMs })
+        }
+      }
       if (event.type === 'session.ended' || event.type === 'connection.lost') shutdown()
     },
-    [player, shutdown],
+    [player, send, shutdown],
   )
 
-  return { micState, micError, patientSpeaking, startMic, stopMic, shutdown, handleEvent }
+  return { micState, micError, patientSpeaking, startMic, turnMicOff, shutdown, handleEvent }
 }

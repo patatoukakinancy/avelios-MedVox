@@ -26,7 +26,7 @@ export type ClientMessage =
   | { type: 'session.end' }
 
 export type ServerMessage =
-  | { type: 'session.ready'; patient_public: PublicCard }
+  | { type: 'session.ready'; patient_public: PublicCard; mode: SessionMode }
   | { type: 'speech.started' }
   | { type: 'audio.delta'; audio: string }
   | { type: 'transcript.delta'; role: Role; item_id: string; text: string }

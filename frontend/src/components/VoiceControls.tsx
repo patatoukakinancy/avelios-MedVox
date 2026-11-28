@@ -6,7 +6,7 @@ interface Props {
 }
 
 export function VoiceControls({ voice, ready }: Props) {
-  const { micState, micError, patientSpeaking, startMic, stopMic } = voice
+  const { micState, micError, patientSpeaking, startMic, turnMicOff } = voice
   const status = patientSpeaking
     ? 'Patient is speaking'
     : { off: 'Microphone off', starting: 'Starting microphone…', on: 'Listening' }[micState]
@@ -18,7 +18,7 @@ export function VoiceControls({ voice, ready }: Props) {
         <button
           type="button"
           className={micState === 'on' ? 'danger' : undefined}
-          onClick={micState === 'on' ? stopMic : startMic}
+          onClick={micState === 'on' ? turnMicOff : startMic}
           disabled={!ready || micState === 'starting'}
         >
           {micState === 'on' ? 'Turn microphone off' : 'Turn microphone on'}

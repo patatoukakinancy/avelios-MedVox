@@ -17,6 +17,10 @@ export function Consultation({ patient, mode, onExit }: Props) {
 
   const card = session.card ?? patient.public_card
   const ready = session.status === 'ready'
+  const canSend = ready && !session.awaitingReply
+  // The server decides the mode that applies: voice can fall back to text.
+  const activeMode = session.mode ?? mode
+  const voiceFellBack = mode === 'voice' && activeMode === 'text'
 
   const transcriptRef = useRef<HTMLOListElement>(null)
   // Follow new messages unless the student has scrolled up to read earlier ones.
@@ -36,7 +40,7 @@ export function Consultation({ patient, mode, onExit }: Props) {
   function handleSubmit(event: SubmitEvent) {
     event.preventDefault()
     const text = draft.trim()
-    if (!ready || !text) return
+    if (!canSend || !text) return
     followRef.current = true
     session.sendText(text)
     setDraft('')
@@ -69,7 +73,7 @@ export function Consultation({ patient, mode, onExit }: Props) {
       <ol className="transcript" aria-live="polite" ref={transcriptRef} onScroll={handleScroll}>
         {ready && session.transcript.length === 0 && (
           <li className="empty">
-            {mode === 'voice' ? 'Turn on the microphone and greet your patient to begin.' : 'Greet your patient to begin.'}
+            {activeMode === 'voice' ? 'Turn on the microphone and greet your patient to begin.' : 'Greet your patient to begin.'}
           </li>
         )}
         {session.transcript.map((item) => (
@@ -83,8 +87,11 @@ export function Consultation({ patient, mode, onExit }: Props) {
       {session.status === 'connecting' && <p className="muted">Connecting…</p>}
       {session.status === 'ended' && <p className="muted">Session ended ({session.endedReason}).</p>}
       {session.error && <p role="alert">{session.error}</p>}
+      {voiceFellBack && ready && (
+        <p role="alert">Voice is unavailable right now, so this consultation is in text.</p>
+      )}
 
-      {mode === 'voice' ? (
+      {activeMode === 'voice' ? (
         <VoiceControls voice={session.voice} ready={ready} />
       ) : (
         <form onSubmit={handleSubmit}>
@@ -95,7 +102,7 @@ export function Consultation({ patient, mode, onExit }: Props) {
             aria-label="Your question"
             disabled={!ready}
           />
-          <button type="submit" disabled={!ready || !draft.trim()}>
+          <button type="submit" disabled={!canSend || !draft.trim()}>
             Send
           </button>
         </form>

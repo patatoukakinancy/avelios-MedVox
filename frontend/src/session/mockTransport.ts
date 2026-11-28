@@ -23,7 +23,7 @@ export const openMockTransport: OpenTransport = (patient, mode, onMessage) => {
     timers.clear()
   }
 
-  emit({ type: 'session.ready', patient_public: patient.public_card }, 300)
+  emit({ type: 'session.ready', patient_public: patient.public_card, mode: 'text' }, 300)
 
   return {
     send(message) {
@@ -39,6 +39,7 @@ export const openMockTransport: OpenTransport = (patient, mode, onMessage) => {
           emit({ type: 'transcript.delta', role: 'patient', item_id, text }, 400 + i * 200)
         })
         emit({ type: 'transcript.final', role: 'patient', item_id, text: chunks.join('') }, 400 + chunks.length * 200)
+        emit({ type: 'latency', turn: turns, ttfa_ms: null, ttft_ms: 400 }, 400 + chunks.length * 200)
       }
 
       if (message.type === 'session.end') {
